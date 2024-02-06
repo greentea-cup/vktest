@@ -1,0 +1,10 @@
+#!/bin/bash
+rm -rf extern
+mkdir extern
+cd extern
+git clone -n --depth=1 --filter=tree:0 --branch=v0.9.2 https://github.com/recp/cglm.git
+cd cglm
+git sparse-checkout set --no-cone /LICENSE /include/cglm/
+git checkout
+cd ..
+

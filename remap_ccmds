@@ -1,0 +1,20 @@
+#!/bin/bash
+
+source .bash_common
+
+# main
+if [ "$CCMDS_BUILD_TYPE" == "" ]; then
+    if [ "$1" == "" ]; then
+        msg_error "CCMDS_BUILD_TYPE env var not set and no arguments provided"
+        exit 1
+    else
+        msg_info "Using argument \"$1\""
+        CCMDS_BUILD_TYPE="$1"
+    fi
+fi
+
+msg_info "Removing old link"
+rm compile_commands.json
+msg_info "Remapping compile_commands.json to $CCMDS_BUILD_TYPE variant"
+ln -s Build/$CCMDS_BUILD_TYPE/compile_commands.json .
+exit $?

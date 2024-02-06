@@ -1,0 +1,23 @@
+#!/bin/bash
+
+source .bash_common
+
+function build() {
+    cmake --build Build/$BUILD_TYPE
+}
+
+# main
+if [ "$BUILD_TYPE" == "" ]; then
+    msg_error "BUILD_TYPE environment variable not set"
+    exit 1
+fi
+do_task "Running clang-format" ./fmt "clang-format failed"
+do_task "Build $BUILD_TYPE" build "Build $BUILD_TYPE failed"
+if [ "$NORUN" == 1 ]; then
+    msg_info "NORUN env var is set, only building"
+    exit 0
+fi
+msg_info "Running program"
+"./Build/$BUILD_TYPE/vktest" $@
+exit $?
+

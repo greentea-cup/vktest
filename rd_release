@@ -1,0 +1,3 @@
+#!/bin/bash
+NORUN=1 ./release
+qrenderdoc ./rd_release.cap

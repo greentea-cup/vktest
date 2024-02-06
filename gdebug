@@ -1,0 +1,4 @@
+#!/bin/bash
+NORUN=1 ./debug
+gdb ./Build/Debug/vktest $@
+

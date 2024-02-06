@@ -1,0 +1,3 @@
+#!/bin/bash
+NORUN=1 ./debug
+qrenderdoc ./rd_debug.cap

@@ -1,0 +1,2 @@
+#!/bin/bash
+rm -rf Build .ccls-cache data/shaders_compiled compile_commands.json

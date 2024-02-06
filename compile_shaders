@@ -1,0 +1,27 @@
+#!/bin/bash
+
+ROOT=$PWD
+SHADERS_DIR=$ROOT/data/shaders
+COMPILE_DIR=$ROOT/data/shaders_compiled
+which glslc 2>&1 1>/dev/null
+if [ $? != 0 ]; then
+    echo -e "\033[31mERROR: glslc not found in path\033[0m"
+    exit 1
+fi
+echo -e "\033[32mFound glslc at $(which glslc)\033[0m"
+echo "Resetting compile cache"
+rm -rf $COMPILE_DIR
+echo "Creating dirs"
+mkdir -p $COMPILE_DIR
+echo "Compiling shaders"
+cd $SHADERS_DIR
+for f in *; do
+    echo "glslc $f -o $ROOT/data/shaders_compiled/$f.spv"
+    glslc $f -o "$ROOT/data/shaders_compiled/$f.spv"
+    EC=$?
+    if [ $EC != 0 ]; then
+        exit $EC
+    fi
+done
+cd $ROOT
+exit 0

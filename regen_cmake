@@ -1,0 +1,29 @@
+#!/bin/bash
+
+source .bash_common
+
+export CC=clang CXX=clang
+# export CC=gcc GXX=g++
+
+function regen_cmake() {
+    msg_info "CMake -S . -B Build/$1 -DCMAKE_BUILD_TYPE=$1"
+    cmake -S . -B Build/$1 -DCMAKE_BUILD_TYPE=$1
+}
+
+if [ "$CCMDS_BUILD_TYPE" == "" ]; then
+    if [ "$1" == "" ]; then
+        msg_info "Neither CCMDS_BUILD_TYPE env var nor first argument are set\nUsing 'Release' as default"
+        CCMDS_BUILD_TYPE=Release
+    else
+        msg_info "Using argument \"$1\""
+        CCMDS_BUILD_TYPE="$1"
+    fi
+fi
+
+msg_info "Removing Build cache"
+./clear_cache
+regen_cmake Debug
+regen_cmake Release
+msg_info "Symlink'ing to Build/$CCMDS_BUILD_TYPE/compile_commands.json to root for ccls"
+ln -s Build/$CCMDS_BUILD_TYPE/compile_commands.json .
+exit $?

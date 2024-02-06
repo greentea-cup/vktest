@@ -1,0 +1,2 @@
+#!/bin/bash
+clang-format -i $(find "$PWD/src/" -regextype posix-extended -iregex ".*/src/.*\.(c|cpp|cxx|h|hpp)$")
