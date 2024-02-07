@@ -33,8 +33,7 @@ VkDescriptorSetLayout create_descriptor_set_layout(Vulkan *vulkan) {
         .bindingCount = 1,
         .pBindings = &binding};
     VkDescriptorSetLayout descriptorSetLayout;
-    VkResult res =
-        vkCreateDescriptorSetLayout(vulkan->device, &info, NULL, &descriptorSetLayout);
+    VkResult res = vkCreateDescriptorSetLayout(vulkan->device, &info, NULL, &descriptorSetLayout);
     if (res != VK_SUCCESS) {
         eprintf(MSG_ERROR("cannot create descriptor set layout: %d"), res);
         return NULL;
@@ -321,8 +320,6 @@ int main() {
     VkPipelineLayout plLayout = NULL; // this thing needs to be 'Destroy'ed too
     plLayout = create_pipeline_layout(vulkan.device, 1, &descriptorSetLayout, 0, NULL);
     APipelineParams plArgs = APipeline_default();
-    plArgs.rasterizationParams.rasterizerDiscardEnable = VK_FALSE;
-    plArgs.rasterizationParams.cullMode = VK_CULL_MODE_NONE;
     VkPipeline graphicsPipeline = create_pipeline(
         vulkan.device, plLayout, vulkan.renderPass, "main", 2, (AShader[]){vertShader, fragShader},
         plArgs);
@@ -339,19 +336,16 @@ int main() {
         {.pos = {-1., +1.}, .color = RGB(0xff0000)},
         {.pos = {+1., +1.}, .color = RGB(0x00ff00)},
  // 1
-        {.pos = {-1., -1.}, .color = RGB(0x422245)},
+        {.pos = {+1., +1.}, .color = RGB(0xb11132)},
         {.pos = {-1., +1.}, .color = RGB(0xa333f1)},
         {.pos = {+0., +0.}, .color = RGB(0xabcdef)},
-        {.pos = {+1., +1.}, .color = RGB(0xb11132)},
+        {.pos = {-1., -1.}, .color = RGB(0x422245)},
         {.pos = {+1., -1.}, .color = RGB(0xa2abf3)},
-
  // 2
     };
     VertexIdx indices[] = {
-        0, 1, 2, 2, 1,
-        3, // 0
-        4, 5, 6, 6, 5, 7, 7, 8, 6, 6, 8,
-        4 // 1
+        0, 1, 2, 2, 1, 3,                  // 0
+        4, 5, 6, 6, 5, 7, 7, 8, 6, 6, 8, 4 // 1
     };
     uint32_t offsets[] = {0, 6};
     uint32_t lengths[] = {6, 12};
@@ -384,8 +378,7 @@ int main() {
         .pPoolSizes = &poolSize,
         .maxSets = vulkan.maxFrames};
     VkDescriptorPool descriptorPool;
-    if (vkCreateDescriptorPool(vulkan.device, &poolInfo, NULL, &descriptorPool) !=
-        VK_SUCCESS) {
+    if (vkCreateDescriptorPool(vulkan.device, &poolInfo, NULL, &descriptorPool) != VK_SUCCESS) {
         eprintf(MSG_ERROR("failed to create descriptor pool"));
         goto descriptor_pool_failed;
     }
@@ -439,7 +432,7 @@ int main() {
     // end copy data to buffer
     // setup command buffers
     update_viewport(&vulkan);
-    RecordCmdBuffersParams record_cmd_buffers_args = {
+    RecordCmdBuffersParams recordArgs = {
         .vBuffer = vBuffer,
         .iBuffer = iBuffer,
         .indexCount = lengths[index],
@@ -452,6 +445,7 @@ int main() {
     SDL_Event event;
     char running = 1, fullscreen = 0, border = 1;
     uint32_t currentFrame = 0, frameno = 0;
+    float aspect = vulkan.swcExtent.width / (float)vulkan.swcExtent.height;
     while (running) {
         while (SDL_PollEvent(&event)) {
             // printf("SDL event %d\n", event.type);
@@ -464,6 +458,7 @@ int main() {
                     recreate_swapchain(&vulkan);
                     reset_command_pool(&vulkan);
                     update_viewport(&vulkan);
+                    aspect = vulkan.swcExtent.width / (float)vulkan.swcExtent.height;
                     break;
                 }
                 break;
@@ -484,6 +479,8 @@ int main() {
                 case SDL_SCANCODE_G:
                     index = (index + 1) % presetLength;
                     printf("index: %d\n", index);
+                    recordArgs.indexCount = lengths[index];
+                    recordArgs.indexOffset = offsets[index];
                     recreate_swapchain(&vulkan);
                     reset_command_pool(&vulkan);
                     break;
@@ -524,8 +521,8 @@ int main() {
         uint32_t imageIndex = 0;
         frameno++;
         VkResult res = vkAcquireNextImageKHR(
-            vulkan.device, vulkan.swapchain, UINT64_MAX, vulkan.waitSemaphores[currentFrame],
-            NULL, &imageIndex);
+            vulkan.device, vulkan.swapchain, UINT64_MAX, vulkan.waitSemaphores[currentFrame], NULL,
+            &imageIndex);
         if (res == VK_ERROR_OUT_OF_DATE_KHR) {
             recreate_swapchain(&vulkan);
             continue;
@@ -539,9 +536,14 @@ int main() {
         struct MVP mvp = {
             .model = GLM_MAT4_IDENTITY_INIT,
         };
-        glm_rotate(mvp.model, frameno * glm_rad(90.) * 0.001, axis);
+        unsigned long long currentTimeNS;
+        {
+            struct timespec currentTime0;
+            clock_gettime(CLOCK_MONOTONIC, &currentTime0);
+            currentTimeNS = currentTime0.tv_nsec;
+        }
+        glm_rotate(mvp.model, currentTimeNS * 2e-9 * glm_rad(90.), axis);
         glm_lookat((vec3){2, 2, 2}, (vec3){0, 0, 0}, axis, mvp.view);
-        float aspect = vulkan.swcExtent.width / (float)vulkan.swcExtent.height;
         glm_perspective(glm_rad(45), aspect, 0.1, 10, mvp.proj);
         mvp.proj[1][1] *= -1;
 
@@ -551,7 +553,7 @@ int main() {
         vkResetFences(vulkan.device, 1, vulkan.frontFences + currentFrame);
         vkResetCommandBuffer(vulkan.commandBuffers[currentFrame], 0);
         record_command_buffer(
-            &vulkan, graphicsPipeline, plLayout, currentFrame, imageIndex, record_cmd_buffers_args);
+            &vulkan, graphicsPipeline, plLayout, currentFrame, imageIndex, recordArgs);
 
         VkPipelineStageFlags plStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         VkSubmitInfo submitInfo = {
@@ -601,12 +603,10 @@ descriptor_pool_failed:
         vkFreeMemory(vulkan.device, uBufMems[i], NULL);
         vkDestroyBuffer(vulkan.device, uBuffers[i], NULL);
     }
-    if (graphicsPipeline != NULL)
-        vkDestroyPipeline(vulkan.device, graphicsPipeline, NULL);
+    if (graphicsPipeline != NULL) vkDestroyPipeline(vulkan.device, graphicsPipeline, NULL);
     if (descriptorSetLayout != NULL)
         vkDestroyDescriptorSetLayout(vulkan.device, descriptorSetLayout, NULL);
-    if (plLayout != NULL)
-        vkDestroyPipelineLayout(vulkan.device, plLayout, NULL);
+    if (plLayout != NULL) vkDestroyPipelineLayout(vulkan.device, plLayout, NULL);
     destroy_vulkan(&vulkan);
     eprintf(MSG_INFO("program finished"));
     return 0;

@@ -1,0 +1,20 @@
+#!/bin/bash
+if [ "$1" == "" ]; then
+    echo "Provide initial process id"
+    echo 'For tmux do :run-shell "echo #{pane_pid}" on pane'
+    exit 1
+fi
+PID=$1
+PROC_NAME="$(ps -o comm:1= -p $PID)"
+echo "$PID is $PROC_NAME"
+echo "$PROC_NAME" | grep "vktest"
+if [ $? == 0 ]; then
+    echo "Found"
+    cat "/proc/$PID/task/$PID/children"
+    # kill -s SIGSTP -- $PID
+else
+    echo "Next"
+    PID="$(cat /proc/$PID/task/$PID/children)"
+    "$0" $PID
+fi
+
