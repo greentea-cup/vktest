@@ -25,19 +25,19 @@ VkDescriptorSetLayout create_descriptor_set_layout(Vulkan *vulkan) {
         .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
         .descriptorCount = 1,
         .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-        .pImmutableSamplers = VK_NULL_HANDLE};
+        .pImmutableSamplers = NULL};
     VkDescriptorSetLayoutCreateInfo info = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .pNext = VK_NULL_HANDLE,
+        .pNext = NULL,
         .flags = 0,
         .bindingCount = 1,
         .pBindings = &binding};
     VkDescriptorSetLayout descriptorSetLayout;
     VkResult res =
-        vkCreateDescriptorSetLayout(vulkan->device, &info, VK_NULL_HANDLE, &descriptorSetLayout);
+        vkCreateDescriptorSetLayout(vulkan->device, &info, NULL, &descriptorSetLayout);
     if (res != VK_SUCCESS) {
         eprintf(MSG_ERROR("cannot create descriptor set layout: %d"), res);
-        return VK_NULL_HANDLE;
+        return NULL;
     }
     return descriptorSetLayout;
 }
@@ -57,7 +57,7 @@ int copy_buffer(Vulkan *vulkan, VulkanCopyBufferParams args) {
     if (args.size == 0) return 0;
     VkCommandBufferAllocateInfo cbAInfo = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .pNext = VK_NULL_HANDLE,
+        .pNext = NULL,
         .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
         .commandPool = vulkan->commandPool,
         .commandBufferCount = 1};
@@ -67,9 +67,9 @@ int copy_buffer(Vulkan *vulkan, VulkanCopyBufferParams args) {
 
     VkCommandBufferBeginInfo cbBInfo = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .pNext = VK_NULL_HANDLE,
+        .pNext = NULL,
         .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-        .pInheritanceInfo = VK_NULL_HANDLE};
+        .pInheritanceInfo = NULL};
     vkBeginCommandBuffer(cb, &cbBInfo);
 
     VkBufferCopy copyRegion = {
@@ -79,15 +79,15 @@ int copy_buffer(Vulkan *vulkan, VulkanCopyBufferParams args) {
 
     VkSubmitInfo sInfo = {
         .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .pNext = VK_NULL_HANDLE,
+        .pNext = NULL,
         .waitSemaphoreCount = 0,
-        .pWaitSemaphores = VK_NULL_HANDLE,
-        .pWaitDstStageMask = VK_NULL_HANDLE,
+        .pWaitSemaphores = NULL,
+        .pWaitDstStageMask = NULL,
         .commandBufferCount = 1,
         .pCommandBuffers = &cb,
         .signalSemaphoreCount = 0,
-        .pSignalSemaphores = VK_NULL_HANDLE};
-    vkQueueSubmit(vulkan->drawQueue, 1, &sInfo, VK_NULL_HANDLE);
+        .pSignalSemaphores = NULL};
+    vkQueueSubmit(vulkan->drawQueue, 1, &sInfo, NULL);
     vkQueueWaitIdle(vulkan->drawQueue);
 
     vkFreeCommandBuffers(vulkan->device, vulkan->commandPool, 1, &cb);
@@ -126,14 +126,14 @@ int create_buffer(
     int ret = 0;
     VkBufferCreateInfo bcInfo = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .pNext = VK_NULL_HANDLE,
+        .pNext = NULL,
         .flags = 0,
         .size = bufferSize,
         .usage = bufferUsage,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE};
     VkBuffer buffer;
-    VkDeviceMemory bufMem = VK_NULL_HANDLE;
-    vkCreateBuffer(vulkan->device, &bcInfo, VK_NULL_HANDLE, &buffer);
+    VkDeviceMemory bufMem = NULL;
+    vkCreateBuffer(vulkan->device, &bcInfo, NULL, &buffer);
     VkMemoryRequirements memReqs;
     vkGetBufferMemoryRequirements(vulkan->device, buffer, &memReqs);
     // find memory type
@@ -146,11 +146,11 @@ int create_buffer(
     // allocate buffer
     VkMemoryAllocateInfo allocInfo = {
         .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-        .pNext = VK_NULL_HANDLE,
+        .pNext = NULL,
         .allocationSize = memReqs.size,
         .memoryTypeIndex = memoryType};
 
-    VkResult res = vkAllocateMemory(vulkan->device, &allocInfo, VK_NULL_HANDLE, &bufMem);
+    VkResult res = vkAllocateMemory(vulkan->device, &allocInfo, NULL, &bufMem);
     if (res != VK_SUCCESS) {
         eprintf(MSG_ERROR("cannot allocate memory: %d"), res);
         ret = 2;
@@ -161,9 +161,9 @@ int create_buffer(
     *out_bufferMemory = bufMem;
     return ret;
 cleanup:
-    vkDestroyBuffer(vulkan->device, buffer, VK_NULL_HANDLE);
-    *out_buffer = VK_NULL_HANDLE;
-    *out_bufferMemory = VK_NULL_HANDLE;
+    vkDestroyBuffer(vulkan->device, buffer, NULL);
+    *out_buffer = NULL;
+    *out_bufferMemory = NULL;
     return ret;
 }
 
@@ -278,7 +278,7 @@ void record_command_buffer(
     vkCmdBindIndexBuffer(cmdBuf, args.iBuffer, 0, VulkanIndexType);
     vkCmdBindDescriptorSets(
         cmdBuf, VK_PIPELINE_BIND_POINT_GRAPHICS, plLayout, 0, 1, args.descriptorSets + currentFrame,
-        0, VK_NULL_HANDLE);
+        0, NULL);
     vkCmdDrawIndexed(cmdBuf, args.indexCount, 1, args.indexOffset, 0, 0);
     vkCmdEndRenderPass(cmdBuf);
     res = vkEndCommandBuffer(cmdBuf);
@@ -318,7 +318,7 @@ int main() {
     if (vertShader.module == NULL || fragShader.module == NULL) { goto shader_load_error; }
     eprintf(MSG_INFO("Shaders loaded successfully"));
     VkDescriptorSetLayout descriptorSetLayout = create_descriptor_set_layout(&vulkan);
-    VkPipelineLayout plLayout = VK_NULL_HANDLE; // this thing needs to be 'Destroy'ed too
+    VkPipelineLayout plLayout = NULL; // this thing needs to be 'Destroy'ed too
     plLayout = create_pipeline_layout(vulkan.device, 1, &descriptorSetLayout, 0, NULL);
     APipelineParams plArgs = APipeline_default();
     plArgs.rasterizationParams.rasterizerDiscardEnable = VK_FALSE;
@@ -378,13 +378,13 @@ int main() {
         .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount = vulkan.maxFrames};
     VkDescriptorPoolCreateInfo poolInfo = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-        .pNext = VK_NULL_HANDLE,
+        .pNext = NULL,
         .flags = 0,
         .poolSizeCount = 1,
         .pPoolSizes = &poolSize,
         .maxSets = vulkan.maxFrames};
     VkDescriptorPool descriptorPool;
-    if (vkCreateDescriptorPool(vulkan.device, &poolInfo, VK_NULL_HANDLE, &descriptorPool) !=
+    if (vkCreateDescriptorPool(vulkan.device, &poolInfo, NULL, &descriptorPool) !=
         VK_SUCCESS) {
         eprintf(MSG_ERROR("failed to create descriptor pool"));
         goto descriptor_pool_failed;
@@ -396,7 +396,7 @@ int main() {
     for (uint32_t i = 0; i < vulkan.maxFrames; i++) { layouts[i] = descriptorSetLayout; }
     VkDescriptorSetAllocateInfo dsAInfo = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .pNext = VK_NULL_HANDLE,
+        .pNext = NULL,
         .descriptorPool = descriptorPool,
         .descriptorSetCount = vulkan.maxFrames,
         .pSetLayouts = layouts};
@@ -415,17 +415,17 @@ int main() {
         };
         VkWriteDescriptorSet descriptorWrite = {
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .pNext = VK_NULL_HANDLE,
+            .pNext = NULL,
             .dstSet = descriptorSets[i],
             .dstBinding = uBufBinding,
             .dstArrayElement = 0, // from
             .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
             .descriptorCount = 1, // count
             .pBufferInfo = &bufInfo,
-            .pImageInfo = VK_NULL_HANDLE,
-            .pTexelBufferView = VK_NULL_HANDLE};
+            .pImageInfo = NULL,
+            .pTexelBufferView = NULL};
         // device, descriptor count to write, which to write, count to copy, which to copy
-        vkUpdateDescriptorSets(vulkan.device, 1, &descriptorWrite, 0, VK_NULL_HANDLE);
+        vkUpdateDescriptorSets(vulkan.device, 1, &descriptorWrite, 0, NULL);
     }
     // end create descriptor sets
     // copy data to buffer
@@ -525,7 +525,7 @@ int main() {
         frameno++;
         VkResult res = vkAcquireNextImageKHR(
             vulkan.device, vulkan.swapchain, UINT64_MAX, vulkan.waitSemaphores[currentFrame],
-            VK_NULL_HANDLE, &imageIndex);
+            NULL, &imageIndex);
         if (res == VK_ERROR_OUT_OF_DATE_KHR) {
             recreate_swapchain(&vulkan);
             continue;
@@ -556,7 +556,7 @@ int main() {
         VkPipelineStageFlags plStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         VkSubmitInfo submitInfo = {
             .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .pNext = VK_NULL_HANDLE,
+            .pNext = NULL,
             .waitSemaphoreCount = 1,
             .pWaitSemaphores = vulkan.waitSemaphores + currentFrame,
             .pWaitDstStageMask = &plStage,
@@ -568,47 +568,45 @@ int main() {
 
         VkPresentInfoKHR presentInfo = {
             .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-            .pNext = VK_NULL_HANDLE,
+            .pNext = NULL,
             .waitSemaphoreCount = 1,
             .pWaitSemaphores = vulkan.signalSemaphores + currentFrame,
             .swapchainCount = 1,
             .pSwapchains = &vulkan.swapchain,
             .pImageIndices = &imageIndex,
-            .pResults = VK_NULL_HANDLE};
+            .pResults = NULL};
         vkQueuePresentKHR(vulkan.presentQueue, &presentInfo);
         currentFrame = (currentFrame + 1) % vulkan.maxFrames;
         // end draw frame
     }
     vkDeviceWaitIdle(vulkan.device);
 
-    // vkFreeDescriptorSets(vulkan.device, descriptorPool, vulkan.maxFrames, descriptorSets);
 descriptor_sets_failed:
     free(descriptorSets);
     free(layouts);
 descriptor_pool_failed:
-    vkDestroyDescriptorPool(vulkan.device, descriptorPool, VK_NULL_HANDLE);
-    // vkDestroyDescriptorSetLayout(vulkan.device, descriptorSetLayout, VK_NULL_HANDLE);
-cleanup:
+    vkDestroyDescriptorPool(vulkan.device, descriptorPool, NULL);
+    // cleanup
     // destroy staging buffers
-    vkDestroyBuffer(vulkan.device, svBuffer, VK_NULL_HANDLE);
-    vkFreeMemory(vulkan.device, svBufMem, VK_NULL_HANDLE);
-    vkDestroyBuffer(vulkan.device, siBuffer, VK_NULL_HANDLE);
-    vkFreeMemory(vulkan.device, siBufMem, VK_NULL_HANDLE);
-    vkFreeMemory(vulkan.device, vBufMem, VK_NULL_HANDLE);
-    vkDestroyBuffer(vulkan.device, vBuffer, VK_NULL_HANDLE);
-    vkFreeMemory(vulkan.device, iBufMem, VK_NULL_HANDLE);
-    vkDestroyBuffer(vulkan.device, iBuffer, VK_NULL_HANDLE);
+    vkDestroyBuffer(vulkan.device, svBuffer, NULL);
+    vkFreeMemory(vulkan.device, svBufMem, NULL);
+    vkDestroyBuffer(vulkan.device, siBuffer, NULL);
+    vkFreeMemory(vulkan.device, siBufMem, NULL);
+    vkFreeMemory(vulkan.device, vBufMem, NULL);
+    vkDestroyBuffer(vulkan.device, vBuffer, NULL);
+    vkFreeMemory(vulkan.device, iBufMem, NULL);
+    vkDestroyBuffer(vulkan.device, iBuffer, NULL);
     for (uint32_t i = 0; i < vulkan.maxFrames; i++) {
         vkUnmapMemory(vulkan.device, uBufMems[i]);
-        vkFreeMemory(vulkan.device, uBufMems[i], VK_NULL_HANDLE);
-        vkDestroyBuffer(vulkan.device, uBuffers[i], VK_NULL_HANDLE);
+        vkFreeMemory(vulkan.device, uBufMems[i], NULL);
+        vkDestroyBuffer(vulkan.device, uBuffers[i], NULL);
     }
-    if (graphicsPipeline != VK_NULL_HANDLE)
-        vkDestroyPipeline(vulkan.device, graphicsPipeline, VK_NULL_HANDLE);
-    if (descriptorSetLayout != VK_NULL_HANDLE)
-        vkDestroyDescriptorSetLayout(vulkan.device, descriptorSetLayout, VK_NULL_HANDLE);
-    if (plLayout != VK_NULL_HANDLE)
-        vkDestroyPipelineLayout(vulkan.device, plLayout, VK_NULL_HANDLE);
+    if (graphicsPipeline != NULL)
+        vkDestroyPipeline(vulkan.device, graphicsPipeline, NULL);
+    if (descriptorSetLayout != NULL)
+        vkDestroyDescriptorSetLayout(vulkan.device, descriptorSetLayout, NULL);
+    if (plLayout != NULL)
+        vkDestroyPipelineLayout(vulkan.device, plLayout, NULL);
     destroy_vulkan(&vulkan);
     eprintf(MSG_INFO("program finished"));
     return 0;
