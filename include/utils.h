@@ -1,7 +1,7 @@
 #ifndef UTILS_H
 #define UTILS_H
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 // macro for array allocation
 // change malloc to anything needed (global)

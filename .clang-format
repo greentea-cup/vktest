@@ -3,7 +3,7 @@ Language: Cpp
 # BasedOnStyle: LLVM
 AccessModifierOffset: -2
 AlignAfterOpenBracket: AlwaysBreak
-AlignArrayOfStructures: Right
+AlignArrayOfStructures: Left
 AlignConsecutiveMacros: None
 AlignConsecutiveAssignments: None
 AlignConsecutiveBitFields: None
@@ -12,7 +12,7 @@ AlignEscapedNewlines: Right
 AlignOperands: Align
 AlignTrailingComments: true
 AllowAllArgumentsOnNextLine: true
-AllowAllParametersOfDeclarationOnNextLine: true
+AllowAllParametersOfDeclarationOnNextLine: false
 AllowShortEnumsOnASingleLine: true
 AllowShortBlocksOnASingleLine: Always
 AllowShortCaseLabelsOnASingleLine: true
@@ -56,7 +56,7 @@ BreakConstructorInitializers: BeforeColon
 BreakAfterJavaFieldAnnotations: false
 BreakStringLiterals: true
 # vvv = line width
-ColumnLimit: 120
+ColumnLimit: 100
 CommentPragmas: '^ IWYU pragma: '
 QualifierAlignment: Leave
 CompactNamespaces: false

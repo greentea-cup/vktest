@@ -12,7 +12,8 @@ VkCommandPool create_command_pool(VkDevice device, uint32_t graphicsQFI) {
     return commandPool;
 }
 
-VkCommandBuffer *create_command_buffers(VkDevice device, VkCommandPool commandPool, uint32_t bufferCount) {
+VkCommandBuffer *create_command_buffers(
+    VkDevice device, VkCommandPool commandPool, uint32_t bufferCount) {
     VkCommandBufferAllocateInfo cbAInfo = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .pNext = VK_NULL_HANDLE,

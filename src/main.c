@@ -33,7 +33,8 @@ VkDescriptorSetLayout create_descriptor_set_layout(Vulkan *vulkan) {
         .bindingCount = 1,
         .pBindings = &binding};
     VkDescriptorSetLayout descriptorSetLayout;
-    VkResult res = vkCreateDescriptorSetLayout(vulkan->device, &info, VK_NULL_HANDLE, &descriptorSetLayout);
+    VkResult res =
+        vkCreateDescriptorSetLayout(vulkan->device, &info, VK_NULL_HANDLE, &descriptorSetLayout);
     if (res != VK_SUCCESS) {
         eprintf(MSG_ERROR("cannot create descriptor set layout: %d"), res);
         return VK_NULL_HANDLE;
@@ -71,7 +72,8 @@ int copy_buffer(Vulkan *vulkan, VulkanCopyBufferParams args) {
         .pInheritanceInfo = VK_NULL_HANDLE};
     vkBeginCommandBuffer(cb, &cbBInfo);
 
-    VkBufferCopy copyRegion = {.srcOffset = args.srcOffset, .dstOffset = args.dstOffset, .size = args.size};
+    VkBufferCopy copyRegion = {
+        .srcOffset = args.srcOffset, .dstOffset = args.dstOffset, .size = args.size};
     vkCmdCopyBuffer(cb, args.src, args.dst, 1, &copyRegion);
     vkEndCommandBuffer(cb);
 
@@ -98,11 +100,13 @@ int copy_buffer(Vulkan *vulkan, VulkanCopyBufferParams args) {
  * returns memory type to out_memoryType
  */
 int find_memory_type(
-    Vulkan *vulkan, uint32_t typeFilter, VkMemoryPropertyFlagBits properties, uint32_t *out_memoryType) {
+    Vulkan *vulkan, uint32_t typeFilter, VkMemoryPropertyFlagBits properties,
+    uint32_t *out_memoryType) {
     VkPhysicalDeviceMemoryProperties memProps;
     vkGetPhysicalDeviceMemoryProperties(vulkan->pdevice, &memProps);
     for (uint32_t i = 0; i < memProps.memoryTypeCount; i++) {
-        if ((typeFilter & (1 << i)) && ((memProps.memoryTypes[i].propertyFlags & properties) == properties)) {
+        if ((typeFilter & (1 << i)) &&
+            ((memProps.memoryTypes[i].propertyFlags & properties) == properties)) {
             *out_memoryType = i;
             return 0;
         }
@@ -116,8 +120,9 @@ int find_memory_type(
  * 2 if cannot allocate memory
  */
 int create_buffer(
-    Vulkan *vulkan, uint32_t bufferSize, VkBufferUsageFlags bufferUsage, VkMemoryPropertyFlagBits memoryProperties,
-    VkBuffer *out_buffer, VkDeviceMemory *out_bufferMemory) {
+    Vulkan *vulkan, uint32_t bufferSize, VkBufferUsageFlags bufferUsage,
+    VkMemoryPropertyFlagBits memoryProperties, VkBuffer *out_buffer,
+    VkDeviceMemory *out_bufferMemory) {
     int ret = 0;
     VkBufferCreateInfo bcInfo = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -166,9 +171,11 @@ cleanup:
  * 0 on success
  * 1 on fail
  */
-int create_staging_buffer(Vulkan *vulkan, uint32_t bufferSize, VkBuffer *out_buffer, VkDeviceMemory *out_bufferMemory) {
+int create_staging_buffer(
+    Vulkan *vulkan, uint32_t bufferSize, VkBuffer *out_buffer, VkDeviceMemory *out_bufferMemory) {
     VkBufferUsageFlags usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-    VkMemoryPropertyFlagBits memProps = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    VkMemoryPropertyFlagBits memProps =
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     return create_buffer(vulkan, bufferSize, usage, memProps, out_buffer, out_bufferMemory);
 }
 
@@ -176,7 +183,8 @@ int create_staging_buffer(Vulkan *vulkan, uint32_t bufferSize, VkBuffer *out_buf
  * 0 on success
  * 1 on fail
  */
-int create_vertex_buffer(Vulkan *vulkan, uint32_t bufferSize, VkBuffer *out_buffer, VkDeviceMemory *out_bufferMemory) {
+int create_vertex_buffer(
+    Vulkan *vulkan, uint32_t bufferSize, VkBuffer *out_buffer, VkDeviceMemory *out_bufferMemory) {
     VkBufferUsageFlags usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
     VkMemoryPropertyFlagBits memProps = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     return create_buffer(vulkan, bufferSize, usage, memProps, out_buffer, out_bufferMemory);
@@ -186,7 +194,8 @@ int create_vertex_buffer(Vulkan *vulkan, uint32_t bufferSize, VkBuffer *out_buff
  * 0 on success
  * 1 on fail
  */
-int create_index_buffer(Vulkan *vulkan, uint32_t bufferSize, VkBuffer *out_buffer, VkDeviceMemory *out_bufferMemory) {
+int create_index_buffer(
+    Vulkan *vulkan, uint32_t bufferSize, VkBuffer *out_buffer, VkDeviceMemory *out_bufferMemory) {
     VkBufferUsageFlags usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
     VkMemoryPropertyFlagBits memProps = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     return create_buffer(vulkan, bufferSize, usage, memProps, out_buffer, out_bufferMemory);
@@ -197,14 +206,17 @@ int create_index_buffer(Vulkan *vulkan, uint32_t bufferSize, VkBuffer *out_buffe
  * 1 on fail
  */
 int create_uniform_buffers(
-    Vulkan *vulkan, uint32_t count, uint32_t buffersSize, VkBuffer *out_buffers, VkDeviceMemory *out_buffersMemories,
-    void **out_buffersMapped) {
+    Vulkan *vulkan, uint32_t count, uint32_t buffersSize, VkBuffer *out_buffers,
+    VkDeviceMemory *out_buffersMemories, void **out_buffersMapped) {
     for (uint32_t i = 0; i < count; i++) {
         VkBufferUsageFlags usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-        VkMemoryPropertyFlagBits memProps = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-        int res = create_buffer(vulkan, buffersSize, usage, memProps, out_buffers + i, out_buffersMemories + i);
+        VkMemoryPropertyFlagBits memProps =
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        int res = create_buffer(
+            vulkan, buffersSize, usage, memProps, out_buffers + i, out_buffersMemories + i);
         if (res) return res;
-        VkResult res2 = vkMapMemory(vulkan->device, out_buffersMemories[i], 0, buffersSize, 0, out_buffersMapped + i);
+        VkResult res2 = vkMapMemory(
+            vulkan->device, out_buffersMemories[i], 0, buffersSize, 0, out_buffersMapped + i);
         if (res2 != VK_SUCCESS) return 1;
     }
     return 0;
@@ -221,7 +233,8 @@ typedef struct {
  */
 int fill_buffer(Vulkan *vulkan, VkDeviceMemory bufferMemory, void *data, FillBufferParams args) {
     void *mapData;
-    VkResult res = vkMapMemory(vulkan->device, bufferMemory, args.bufferOffset, args.size, 0, &mapData);
+    VkResult res =
+        vkMapMemory(vulkan->device, bufferMemory, args.bufferOffset, args.size, 0, &mapData);
     if (res != VK_SUCCESS) {
         eprintf(MSG_ERROR("map memory failed: %d"), res);
         return 1;
@@ -239,8 +252,8 @@ typedef struct {
     VkDescriptorSet *descriptorSets;
 } RecordCmdBuffersParams;
 void record_command_buffer(
-    Vulkan *vulkan, VkPipeline pipeline, VkPipelineLayout plLayout, uint32_t currentFrame, uint32_t imageIndex,
-    RecordCmdBuffersParams args) {
+    Vulkan *vulkan, VkPipeline pipeline, VkPipelineLayout plLayout, uint32_t currentFrame,
+    uint32_t imageIndex, RecordCmdBuffersParams args) {
     VkCommandBufferBeginInfo cbBInfo = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     VkClearValue clearValue = {.color = {.uint32 = {154, 52, 205, 0}}};
     VkRenderPassBeginInfo rpBInfo = {
@@ -264,7 +277,8 @@ void record_command_buffer(
     vkCmdBindVertexBuffers(cmdBuf, 0, 1, &args.vBuffer, (VkDeviceSize[]){0});
     vkCmdBindIndexBuffer(cmdBuf, args.iBuffer, 0, VulkanIndexType);
     vkCmdBindDescriptorSets(
-        cmdBuf, VK_PIPELINE_BIND_POINT_GRAPHICS, plLayout, 0, 1, args.descriptorSets + currentFrame, 0, VK_NULL_HANDLE);
+        cmdBuf, VK_PIPELINE_BIND_POINT_GRAPHICS, plLayout, 0, 1, args.descriptorSets + currentFrame,
+        0, VK_NULL_HANDLE);
     vkCmdDrawIndexed(cmdBuf, args.indexCount, 1, args.indexOffset, 0, 0);
     vkCmdEndRenderPass(cmdBuf);
     res = vkEndCommandBuffer(cmdBuf);
@@ -297,32 +311,24 @@ int main() {
 #define SHADER_PATH(x) SHADER_PATH_PREFIX x
     char const *vertShaderPath = SHADER_PATH("main.vert.spv");
     char const *fragShaderPath = SHADER_PATH("main.frag.spv");
-    ShaderCode vertShader = read_shader(vertShaderPath);
-    ShaderCode fragShader = read_shader(fragShaderPath);
-    if (vertShader.size == 0 || fragShader.size == 0) { goto shader_load_error; }
+    AShader vertShader =
+        AShader_from_path(vulkan.device, vertShaderPath, VK_SHADER_STAGE_VERTEX_BIT);
+    AShader fragShader =
+        AShader_from_path(vulkan.device, fragShaderPath, VK_SHADER_STAGE_FRAGMENT_BIT);
+    if (vertShader.module == NULL || fragShader.module == NULL) { goto shader_load_error; }
     eprintf(MSG_INFO("Shaders loaded successfully"));
-    // shaders == create program
-    VkShaderModule vertSM = create_shader_module(vulkan.device, vertShader);
-    VkShaderModule fragSM = create_shader_module(vulkan.device, fragShader);
     VkDescriptorSetLayout descriptorSetLayout = create_descriptor_set_layout(&vulkan);
     VkPipelineLayout plLayout = VK_NULL_HANDLE; // this thing needs to be 'Destroy'ed too
-    VkPipelineLayoutCreateInfo plCInfo = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .pNext = VK_NULL_HANDLE,
-        .flags = 0,
-        .setLayoutCount = 1,
-        .pSetLayouts = &descriptorSetLayout,
-        .pushConstantRangeCount = 0,
-        .pPushConstantRanges = VK_NULL_HANDLE};
-    VkPipeline graphicsPipeline = create_graphics_pipeline(
-        vulkan.device, plCInfo, (VkShaderModule[]){vertSM, fragSM},
-        (VkShaderStageFlags[]){VK_SHADER_STAGE_VERTEX_BIT, VK_SHADER_STAGE_FRAGMENT_BIT}, 2, vulkan.renderPass,
-        &plLayout);
+    plLayout = create_pipeline_layout(vulkan.device, 1, &descriptorSetLayout, 0, NULL);
+    APipelineParams plArgs = APipeline_default();
+    plArgs.rasterizationParams.rasterizerDiscardEnable = VK_FALSE;
+    plArgs.rasterizationParams.cullMode = VK_CULL_MODE_NONE;
+    VkPipeline graphicsPipeline = create_pipeline(
+        vulkan.device, plLayout, vulkan.renderPass, "main", 2, (AShader[]){vertShader, fragShader},
+        plArgs);
     // shaders not needed here because they are inside graphicsPipeline
-    free(vertShader.code);
-    free(fragShader.code);
-    destroy_shader_module(vulkan.device, vertSM);
-    destroy_shader_module(vulkan.device, fragSM);
+    AShader_destroy(vulkan.device, vertShader);
+    AShader_destroy(vulkan.device, fragShader);
 
 #define RGB(x) {(x >> 16 & 0xff) / 256., (x >> 8 & 0xff) / 256., (x & 0xff) / 256.}
 
@@ -342,8 +348,10 @@ int main() {
  // 2
     };
     VertexIdx indices[] = {
-        0, 1, 2, 2, 1, 3,                  // 0
-        4, 5, 6, 6, 5, 7, 7, 8, 6, 6, 8, 4 // 1
+        0, 1, 2, 2, 1,
+        3, // 0
+        4, 5, 6, 6, 5, 7, 7, 8, 6, 6, 8,
+        4 // 1
     };
     uint32_t offsets[] = {0, 6};
     uint32_t lengths[] = {6, 12};
@@ -366,7 +374,8 @@ int main() {
     create_uniform_buffers(&vulkan, vulkan.maxFrames, uBufSize, uBuffers, uBufMems, uBufsMapped);
     // end create buffers
     // create descriptor pool
-    VkDescriptorPoolSize poolSize = {.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount = vulkan.maxFrames};
+    VkDescriptorPoolSize poolSize = {
+        .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount = vulkan.maxFrames};
     VkDescriptorPoolCreateInfo poolInfo = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .pNext = VK_NULL_HANDLE,
@@ -375,7 +384,8 @@ int main() {
         .pPoolSizes = &poolSize,
         .maxSets = vulkan.maxFrames};
     VkDescriptorPool descriptorPool;
-    if (vkCreateDescriptorPool(vulkan.device, &poolInfo, VK_NULL_HANDLE, &descriptorPool) != VK_SUCCESS) {
+    if (vkCreateDescriptorPool(vulkan.device, &poolInfo, VK_NULL_HANDLE, &descriptorPool) !=
+        VK_SUCCESS) {
         eprintf(MSG_ERROR("failed to create descriptor pool"));
         goto descriptor_pool_failed;
     }
@@ -420,9 +430,11 @@ int main() {
     // end create descriptor sets
     // copy data to buffer
     fill_buffer(&vulkan, svBufMem, vertexData, (FillBufferParams){.size = bufferSize});
-    copy_buffer(&vulkan, (VulkanCopyBufferParams){.src = svBuffer, .dst = vBuffer, .size = bufferSize});
+    copy_buffer(
+        &vulkan, (VulkanCopyBufferParams){.src = svBuffer, .dst = vBuffer, .size = bufferSize});
     fill_buffer(&vulkan, siBufMem, indices, (FillBufferParams){.size = indexSize});
-    copy_buffer(&vulkan, (VulkanCopyBufferParams){.src = siBuffer, .dst = iBuffer, .size = indexSize});
+    copy_buffer(
+        &vulkan, (VulkanCopyBufferParams){.src = siBuffer, .dst = iBuffer, .size = indexSize});
 
     // end copy data to buffer
     // setup command buffers
@@ -457,13 +469,15 @@ int main() {
                 break;
             case SDL_KEYDOWN:
                 printf(
-                    "Keydown scancode %s keycode %s\n", SDL_GetScancodeName(event.key.keysym.scancode),
+                    "Keydown scancode %s keycode %s\n",
+                    SDL_GetScancodeName(event.key.keysym.scancode),
                     SDL_GetKeyName(event.key.keysym.sym));
                 switch (event.key.keysym.scancode) {
                 default: break;
                 case SDL_SCANCODE_F:
                     sizeIndex = (sizeIndex + 1) % sizesLength;
-                    printf("resolution %d %d\n", sizes[2 * sizeIndex + 0], sizes[2 * sizeIndex + 1]);
+                    printf(
+                        "resolution %d %d\n", sizes[2 * sizeIndex + 0], sizes[2 * sizeIndex + 1]);
                     SDL_SetWindowSize(window, sizes[2 * sizeIndex + 0], sizes[2 * sizeIndex + 1]);
                     SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
                     break;
@@ -481,7 +495,9 @@ int main() {
                 case SDL_SCANCODE_F11:
                     fullscreen = !fullscreen;
                     SDL_SetWindowFullscreen(window, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
-                    if (!fullscreen) SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+                    if (!fullscreen)
+                        SDL_SetWindowPosition(
+                            window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
                     break;
                 case SDL_SCANCODE_Q:
                     if (event.key.keysym.mod & KMOD_CTRL) running = 0;
@@ -508,8 +524,8 @@ int main() {
         uint32_t imageIndex = 0;
         frameno++;
         VkResult res = vkAcquireNextImageKHR(
-            vulkan.device, vulkan.swapchain, UINT64_MAX, vulkan.waitSemaphores[currentFrame], VK_NULL_HANDLE,
-            &imageIndex);
+            vulkan.device, vulkan.swapchain, UINT64_MAX, vulkan.waitSemaphores[currentFrame],
+            VK_NULL_HANDLE, &imageIndex);
         if (res == VK_ERROR_OUT_OF_DATE_KHR) {
             recreate_swapchain(&vulkan);
             continue;
@@ -534,7 +550,8 @@ int main() {
 
         vkResetFences(vulkan.device, 1, vulkan.frontFences + currentFrame);
         vkResetCommandBuffer(vulkan.commandBuffers[currentFrame], 0);
-        record_command_buffer(&vulkan, graphicsPipeline, plLayout, currentFrame, imageIndex, record_cmd_buffers_args);
+        record_command_buffer(
+            &vulkan, graphicsPipeline, plLayout, currentFrame, imageIndex, record_cmd_buffers_args);
 
         VkPipelineStageFlags plStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         VkSubmitInfo submitInfo = {
@@ -586,17 +603,19 @@ cleanup:
         vkFreeMemory(vulkan.device, uBufMems[i], VK_NULL_HANDLE);
         vkDestroyBuffer(vulkan.device, uBuffers[i], VK_NULL_HANDLE);
     }
-    if (graphicsPipeline != VK_NULL_HANDLE) vkDestroyPipeline(vulkan.device, graphicsPipeline, VK_NULL_HANDLE);
+    if (graphicsPipeline != VK_NULL_HANDLE)
+        vkDestroyPipeline(vulkan.device, graphicsPipeline, VK_NULL_HANDLE);
     if (descriptorSetLayout != VK_NULL_HANDLE)
         vkDestroyDescriptorSetLayout(vulkan.device, descriptorSetLayout, VK_NULL_HANDLE);
-    if (plLayout != VK_NULL_HANDLE) vkDestroyPipelineLayout(vulkan.device, plLayout, VK_NULL_HANDLE);
+    if (plLayout != VK_NULL_HANDLE)
+        vkDestroyPipelineLayout(vulkan.device, plLayout, VK_NULL_HANDLE);
     destroy_vulkan(&vulkan);
     eprintf(MSG_INFO("program finished"));
     return 0;
 shader_load_error:
     eprintf(MSG_ERROR("Shader load error"));
-    if (!vertShader.size) eprintf(MSG_ERROR("Shader '%s' not loaded"), vertShaderPath);
-    if (!fragShader.size) eprintf(MSG_ERROR("Shader '%s' not loaded"), fragShaderPath);
+    if (vertShader.module == NULL) eprintf(MSG_ERROR("Shader '%s' not loaded"), vertShaderPath);
+    if (fragShader.module == NULL) eprintf(MSG_ERROR("Shader '%s' not loaded"), fragShaderPath);
     return 2;
 vulkan_init_error:
     eprintf(MSG_ERROR("Vulkan init error: %s"), VulkanInitStatus_str(vulkan.status));

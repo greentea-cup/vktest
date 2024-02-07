@@ -1,16 +1,18 @@
 #ifndef SHADER_H
 #define SHADER_H
-#include <stdint.h>
 #include "vulkan/vulkan.h"
+#include <stdint.h>
 
 typedef struct {
-    uint32_t size;
-    uint32_t *code;
-} ShaderCode;
+    VkShaderModule module;
+    VkShaderStageFlagBits stage;
+} AShader;
 
-ShaderCode read_shader(char const *path);
+AShader AShader_from_path(VkDevice device, char const *path, VkShaderStageFlagBits stage);
 
-VkShaderModule create_shader_module(VkDevice device, ShaderCode shader);
+AShader AShader_from_code(
+    VkDevice device, uint32_t codeSize, uint32_t const *code, VkShaderStageFlagBits stage);
 
-void destroy_shader_module(VkDevice device, VkShaderModule sm);
+void AShader_destroy(VkDevice device, AShader shaderToDestroy);
+
 #endif

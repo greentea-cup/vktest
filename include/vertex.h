@@ -8,4 +8,8 @@ typedef struct Vertex {
     float color[3];
 } Vertex;
 
+VkVertexInputBindingDescription Vertex_binding(uint32_t binding);
+
+VkVertexInputAttributeDescription *Vertex_attributes(uint32_t binding, uint32_t *out_count);
+
 #endif

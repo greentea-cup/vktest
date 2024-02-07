@@ -1,14 +1,14 @@
 #ifndef MY_VULKAN_H
 #define MY_VULKAN_H
-#include "vulkan/vulkan.h"
 #include "SDL.h"
+#include "vulkan/vulkan.h"
 
 typedef enum {
     VIS_OK = 0, // Init successful
     VIS_CANNOT_CREATE_INSTANCE,
     VIS_CANNOT_CREATE_SURFACE,
     VIS_BAD_PHYSICAL_DEVICE, // suitable pysical device not found
-    VIS_BAD_QUEUE_FAMILY, // suitable queue family not found
+    VIS_BAD_QUEUE_FAMILY,    // suitable queue family not found
     VIS_CANNOT_CREATE_DEVICE,
     VIS_SURFACE_NOT_SUPPORTED,
     VIS_CANNOT_CREATE_SWAPCHAIN,
@@ -38,14 +38,14 @@ typedef struct {
     VkExtent2D swcExtent;
     VkSwapchainKHR swapchain;
     uint32_t swcImageCount;
-    VkImage *swcImages; // count = swcImageCount
+    VkImage *swcImages;         // count = swcImageCount
     VkImageView *swcImageViews; // count = swcImageCount
     VkRenderPass renderPass;
     VkFramebuffer *framebuffers; // count = swcImageCount
     uint32_t maxFrames;
-    VkSemaphore *waitSemaphores; // count = maxFrames
+    VkSemaphore *waitSemaphores;   // count = maxFrames
     VkSemaphore *signalSemaphores; // count = maxFrames
-    VkFence *frontFences; // count = maxFrames
+    VkFence *frontFences;          // count = maxFrames
     // VkFence *backFences; // count = swcImageCount
     VkCommandPool commandPool;
     VkCommandBuffer *commandBuffers; // count = maxFrames
