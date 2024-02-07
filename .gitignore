@@ -1,5 +1,5 @@
-Build
-extern
-compile_commands.json
-data/shaders_compiled
-.ccls_cache/
+**/Build/
+**/extern/
+**/compile_commands.json
+**/data/shaders_compiled/
+**/.ccls-cache/
