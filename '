@@ -1,0 +1,8 @@
+#ifndef BUFFER_H
+#define BUFFER_H
+
+#include "vulkan/vulkan.h""
+
+VkDescriptorSetLayout create_descriptor_set_layout(VkDevice device);
+
+#endif

@@ -1,5 +1,6 @@
 #ifndef UTILS_H
 #define UTILS_H
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -17,4 +18,14 @@
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
+
+// #define BIG_INDEX_T
+
+#ifdef BIG_INDEX_T
+typedef uint32_t VertexIdx;
+#define VulkanIndexType VK_INDEX_TYPE_UINT32
+#else
+typedef uint16_t VertexIdx;
+#define VulkanIndexType VK_INDEX_TYPE_UINT16
+#endif
 #endif

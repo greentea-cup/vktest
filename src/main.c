@@ -1,4 +1,5 @@
 #include "SDL.h"
+#include "buffer.h"
 #include "my_vulkan.h"
 #include "pipeline.h"
 #include "shader.h"
@@ -8,240 +9,6 @@
 #include <cglm/cglm.h>
 #include <stdio.h>
 #include <time.h>
-
-// #define BIG_INDEX_T
-
-#ifdef BIG_INDEX_T
-typedef uint32_t VertexIdx;
-#define VulkanIndexType VK_INDEX_TYPE_UINT32
-#else
-typedef uint16_t VertexIdx;
-#define VulkanIndexType VK_INDEX_TYPE_UINT16
-#endif
-
-VkDescriptorSetLayout create_descriptor_set_layout(Vulkan *vulkan) {
-    VkDescriptorSetLayoutBinding binding = {
-        .binding = 0,
-        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        .descriptorCount = 1,
-        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-        .pImmutableSamplers = NULL};
-    VkDescriptorSetLayoutCreateInfo info = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .pNext = NULL,
-        .flags = 0,
-        .bindingCount = 1,
-        .pBindings = &binding};
-    VkDescriptorSetLayout descriptorSetLayout;
-    VkResult res = vkCreateDescriptorSetLayout(vulkan->device, &info, NULL, &descriptorSetLayout);
-    if (res != VK_SUCCESS) {
-        eprintf(MSG_ERROR("cannot create descriptor set layout: %d"), res);
-        return NULL;
-    }
-    return descriptorSetLayout;
-}
-
-typedef struct {
-    VkBuffer src;
-    VkBuffer dst;
-    VkDeviceSize srcOffset;
-    VkDeviceSize dstOffset;
-    VkDeviceSize size;
-} VulkanCopyBufferParams;
-/*
- * 0 on success
- * 1 if buffer copy failed
- */
-int copy_buffer(Vulkan *vulkan, VulkanCopyBufferParams args) {
-    if (args.size == 0) return 0;
-    VkCommandBufferAllocateInfo cbAInfo = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .pNext = NULL,
-        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandPool = vulkan->commandPool,
-        .commandBufferCount = 1};
-
-    VkCommandBuffer cb;
-    vkAllocateCommandBuffers(vulkan->device, &cbAInfo, &cb);
-
-    VkCommandBufferBeginInfo cbBInfo = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .pNext = NULL,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-        .pInheritanceInfo = NULL};
-    vkBeginCommandBuffer(cb, &cbBInfo);
-
-    VkBufferCopy copyRegion = {
-        .srcOffset = args.srcOffset, .dstOffset = args.dstOffset, .size = args.size};
-    vkCmdCopyBuffer(cb, args.src, args.dst, 1, &copyRegion);
-    vkEndCommandBuffer(cb);
-
-    VkSubmitInfo sInfo = {
-        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .pNext = NULL,
-        .waitSemaphoreCount = 0,
-        .pWaitSemaphores = NULL,
-        .pWaitDstStageMask = NULL,
-        .commandBufferCount = 1,
-        .pCommandBuffers = &cb,
-        .signalSemaphoreCount = 0,
-        .pSignalSemaphores = NULL};
-    vkQueueSubmit(vulkan->drawQueue, 1, &sInfo, NULL);
-    vkQueueWaitIdle(vulkan->drawQueue);
-
-    vkFreeCommandBuffers(vulkan->device, vulkan->commandPool, 1, &cb);
-    return 0;
-}
-
-/*
- * 0 on success
- * 1 if proper memory type not found
- * returns memory type to out_memoryType
- */
-int find_memory_type(
-    Vulkan *vulkan, uint32_t typeFilter, VkMemoryPropertyFlagBits properties,
-    uint32_t *out_memoryType) {
-    VkPhysicalDeviceMemoryProperties memProps;
-    vkGetPhysicalDeviceMemoryProperties(vulkan->pdevice, &memProps);
-    for (uint32_t i = 0; i < memProps.memoryTypeCount; i++) {
-        if ((typeFilter & (1 << i)) &&
-            ((memProps.memoryTypes[i].propertyFlags & properties) == properties)) {
-            *out_memoryType = i;
-            return 0;
-        }
-    }
-    return 1;
-}
-
-/*
- * 0 on success
- * 1 if no suitable memory type found
- * 2 if cannot allocate memory
- */
-int create_buffer(
-    Vulkan *vulkan, uint32_t bufferSize, VkBufferUsageFlags bufferUsage,
-    VkMemoryPropertyFlagBits memoryProperties, VkBuffer *out_buffer,
-    VkDeviceMemory *out_bufferMemory) {
-    int ret = 0;
-    VkBufferCreateInfo bcInfo = {
-        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .pNext = NULL,
-        .flags = 0,
-        .size = bufferSize,
-        .usage = bufferUsage,
-        .sharingMode = VK_SHARING_MODE_EXCLUSIVE};
-    VkBuffer buffer;
-    VkDeviceMemory bufMem = NULL;
-    vkCreateBuffer(vulkan->device, &bcInfo, NULL, &buffer);
-    VkMemoryRequirements memReqs;
-    vkGetBufferMemoryRequirements(vulkan->device, buffer, &memReqs);
-    // find memory type
-    uint32_t memoryType;
-    if (find_memory_type(vulkan, memReqs.memoryTypeBits, memoryProperties, &memoryType)) {
-        eprintf(MSG_ERROR("no suitable memory type"));
-        ret = 1;
-        goto cleanup;
-    }
-    // allocate buffer
-    VkMemoryAllocateInfo allocInfo = {
-        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-        .pNext = NULL,
-        .allocationSize = memReqs.size,
-        .memoryTypeIndex = memoryType};
-
-    VkResult res = vkAllocateMemory(vulkan->device, &allocInfo, NULL, &bufMem);
-    if (res != VK_SUCCESS) {
-        eprintf(MSG_ERROR("cannot allocate memory: %d"), res);
-        ret = 2;
-        goto cleanup;
-    }
-    vkBindBufferMemory(vulkan->device, buffer, bufMem, 0);
-    *out_buffer = buffer;
-    *out_bufferMemory = bufMem;
-    return ret;
-cleanup:
-    vkDestroyBuffer(vulkan->device, buffer, NULL);
-    *out_buffer = NULL;
-    *out_bufferMemory = NULL;
-    return ret;
-}
-
-/*
- * 0 on success
- * 1 on fail
- */
-int create_staging_buffer(
-    Vulkan *vulkan, uint32_t bufferSize, VkBuffer *out_buffer, VkDeviceMemory *out_bufferMemory) {
-    VkBufferUsageFlags usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-    VkMemoryPropertyFlagBits memProps =
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-    return create_buffer(vulkan, bufferSize, usage, memProps, out_buffer, out_bufferMemory);
-}
-
-/*
- * 0 on success
- * 1 on fail
- */
-int create_vertex_buffer(
-    Vulkan *vulkan, uint32_t bufferSize, VkBuffer *out_buffer, VkDeviceMemory *out_bufferMemory) {
-    VkBufferUsageFlags usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-    VkMemoryPropertyFlagBits memProps = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-    return create_buffer(vulkan, bufferSize, usage, memProps, out_buffer, out_bufferMemory);
-}
-
-/*
- * 0 on success
- * 1 on fail
- */
-int create_index_buffer(
-    Vulkan *vulkan, uint32_t bufferSize, VkBuffer *out_buffer, VkDeviceMemory *out_bufferMemory) {
-    VkBufferUsageFlags usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-    VkMemoryPropertyFlagBits memProps = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-    return create_buffer(vulkan, bufferSize, usage, memProps, out_buffer, out_bufferMemory);
-}
-
-/*
- * 0 on success
- * 1 on fail
- */
-int create_uniform_buffers(
-    Vulkan *vulkan, uint32_t count, uint32_t buffersSize, VkBuffer *out_buffers,
-    VkDeviceMemory *out_buffersMemories, void **out_buffersMapped) {
-    for (uint32_t i = 0; i < count; i++) {
-        VkBufferUsageFlags usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-        VkMemoryPropertyFlagBits memProps =
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-        int res = create_buffer(
-            vulkan, buffersSize, usage, memProps, out_buffers + i, out_buffersMemories + i);
-        if (res) return res;
-        VkResult res2 = vkMapMemory(
-            vulkan->device, out_buffersMemories[i], 0, buffersSize, 0, out_buffersMapped + i);
-        if (res2 != VK_SUCCESS) return 1;
-    }
-    return 0;
-}
-
-typedef struct {
-    uint32_t bufferOffset;
-    uint32_t dataOffset;
-    uint32_t size;
-} FillBufferParams;
-/*
- * 0 on success
- * 1 if map memory failed
- */
-int fill_buffer(Vulkan *vulkan, VkDeviceMemory bufferMemory, void *data, FillBufferParams args) {
-    void *mapData;
-    VkResult res =
-        vkMapMemory(vulkan->device, bufferMemory, args.bufferOffset, args.size, 0, &mapData);
-    if (res != VK_SUCCESS) {
-        eprintf(MSG_ERROR("map memory failed: %d"), res);
-        return 1;
-    }
-    memcpy(mapData, data, (size_t)args.size);
-    vkUnmapMemory(vulkan->device, bufferMemory);
-    return 0;
-}
 
 typedef struct {
     VkBuffer vBuffer;
@@ -316,16 +83,17 @@ int main() {
         AShader_from_path(vulkan.device, fragShaderPath, VK_SHADER_STAGE_FRAGMENT_BIT);
     if (vertShader.module == NULL || fragShader.module == NULL) { goto shader_load_error; }
     eprintf(MSG_INFO("Shaders loaded successfully"));
-    VkDescriptorSetLayout descriptorSetLayout = create_descriptor_set_layout(&vulkan);
-    VkPipelineLayout plLayout = NULL; // this thing needs to be 'Destroy'ed too
-    plLayout = create_pipeline_layout(vulkan.device, 1, &descriptorSetLayout, 0, NULL);
+    VkDescriptorSetLayout descriptorSetLayout = create_descriptor_set_layout(vulkan.device);
+    VkPipelineLayout plLayout =
+        create_pipeline_layout(vulkan.device, 1, &descriptorSetLayout, 0, NULL);
     APipelineParams plArgs = APipeline_default();
     VkPipeline graphicsPipeline = create_pipeline(
         vulkan.device, plLayout, vulkan.renderPass, "main", 2, (AShader[]){vertShader, fragShader},
         plArgs);
-    // shaders not needed here because they are inside graphicsPipeline
+    // destroy excess
     AShader_destroy(vulkan.device, vertShader);
     AShader_destroy(vulkan.device, fragShader);
+    APipelineParams_free(plArgs);
 
 #define RGB(x) {(x >> 16 & 0xff) / 256., (x >> 8 & 0xff) / 256., (x & 0xff) / 256.}
 
@@ -355,17 +123,16 @@ int main() {
     uint32_t indexSize = sizeof(indices);
     // uint32_t vertexCount = indexSize / sizeof(*indices);
     // create buffers
-    VkBuffer svBuffer, vBuffer, siBuffer, iBuffer;
-    ARR_ALLOC(VkBuffer, uBuffers, vulkan.maxFrames);
-    VkDeviceMemory svBufMem, vBufMem, siBufMem, iBufMem;
-    ARR_ALLOC(VkDeviceMemory, uBufMems, vulkan.maxFrames);
-    ARR_ALLOC(void *, uBufsMapped, vulkan.maxFrames);
+    VkBuffer svBuffer, vBuffer, siBuffer, iBuffer, *uBuffers;
+    VkDeviceMemory svBufMem, vBufMem, siBufMem, iBufMem, *uBufsMem;
+    void **uBufsMapped;
     VkDeviceSize uBufSize = sizeof(struct MVP);
-    create_staging_buffer(&vulkan, bufferSize, &svBuffer, &svBufMem);
-    create_vertex_buffer(&vulkan, bufferSize, &vBuffer, &vBufMem);
-    create_staging_buffer(&vulkan, indexSize, &siBuffer, &siBufMem);
-    create_index_buffer(&vulkan, indexSize, &iBuffer, &iBufMem);
-    create_uniform_buffers(&vulkan, vulkan.maxFrames, uBufSize, uBuffers, uBufMems, uBufsMapped);
+    svBuffer = create_staging_buffer(vulkan.device, vulkan.pdevice, bufferSize, &svBufMem);
+    vBuffer = create_vertex_buffer(vulkan.device, vulkan.pdevice, bufferSize, &vBufMem);
+    siBuffer = create_staging_buffer(vulkan.device, vulkan.pdevice, indexSize, &siBufMem);
+    iBuffer = create_index_buffer(vulkan.device, vulkan.pdevice, indexSize, &iBufMem);
+    uBuffers = create_uniform_buffers(
+        vulkan.device, vulkan.pdevice, vulkan.maxFrames, uBufSize, &uBufsMem, &uBufsMapped);
     // end create buffers
     // create descriptor pool
     VkDescriptorPoolSize poolSize = {
@@ -422,12 +189,14 @@ int main() {
     }
     // end create descriptor sets
     // copy data to buffer
-    fill_buffer(&vulkan, svBufMem, vertexData, (FillBufferParams){.size = bufferSize});
+    fill_buffer(vulkan.device, svBufMem, vertexData, (FillBufferParams){.size = bufferSize});
     copy_buffer(
-        &vulkan, (VulkanCopyBufferParams){.src = svBuffer, .dst = vBuffer, .size = bufferSize});
-    fill_buffer(&vulkan, siBufMem, indices, (FillBufferParams){.size = indexSize});
+        vulkan.device, vulkan.commandPool, vulkan.drawQueue,
+        (VulkanCopyBufferParams){.src = svBuffer, .dst = vBuffer, .size = bufferSize});
+    fill_buffer(vulkan.device, siBufMem, indices, (FillBufferParams){.size = indexSize});
     copy_buffer(
-        &vulkan, (VulkanCopyBufferParams){.src = siBuffer, .dst = iBuffer, .size = indexSize});
+        vulkan.device, vulkan.commandPool, vulkan.drawQueue,
+        (VulkanCopyBufferParams){.src = siBuffer, .dst = iBuffer, .size = indexSize});
 
     // end copy data to buffer
     // setup command buffers
@@ -599,8 +368,8 @@ descriptor_pool_failed:
     vkFreeMemory(vulkan.device, iBufMem, NULL);
     vkDestroyBuffer(vulkan.device, iBuffer, NULL);
     for (uint32_t i = 0; i < vulkan.maxFrames; i++) {
-        vkUnmapMemory(vulkan.device, uBufMems[i]);
-        vkFreeMemory(vulkan.device, uBufMems[i], NULL);
+        vkUnmapMemory(vulkan.device, uBufsMem[i]);
+        vkFreeMemory(vulkan.device, uBufsMem[i], NULL);
         vkDestroyBuffer(vulkan.device, uBuffers[i], NULL);
     }
     if (graphicsPipeline != NULL) vkDestroyPipeline(vulkan.device, graphicsPipeline, NULL);

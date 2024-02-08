@@ -65,7 +65,10 @@ VkPipelineColorBlendAttachmentState *APipeline_default_attachments(uint32_t *out
     return result;
 }
 
+// TODO: not-owning version
+// (remove allocs for temporary params)
 APipelineParams APipeline_default() {
+    // stack variable will be freed once function exits
     ARR_ALLOC(VkVertexInputBindingDescription, bindings, 1);
     bindings[0] = Vertex_binding(0);
     APipelineParams result = {
