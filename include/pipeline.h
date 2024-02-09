@@ -17,13 +17,13 @@ typedef struct {
     float colorBlendConstants[4];
 } APipelineParams;
 
-VkPipelineRasterizationStateCreateInfo APipeline_default_rasterizer();
+VkPipelineRasterizationStateCreateInfo APipeline_default_rasterizer(void);
 
-VkPipelineMultisampleStateCreateInfo APipeline_default_multisampler();
+VkPipelineMultisampleStateCreateInfo APipeline_default_multisampler(void);
 
 VkPipelineColorBlendAttachmentState *APipeline_default_attachments(uint32_t *out_count);
 
-APipelineParams APipeline_default();
+APipelineParams APipeline_default(uint32_t binding);
 
 void APipelineParams_free(APipelineParams);
 

@@ -27,7 +27,7 @@ VkRect2D make_scissor(
     return scissor;
 }
 
-VkPipelineRasterizationStateCreateInfo APipeline_default_rasterizer() {
+VkPipelineRasterizationStateCreateInfo APipeline_default_rasterizer(void) {
     return (VkPipelineRasterizationStateCreateInfo){
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
         .depthClampEnable = VK_TRUE,
@@ -39,7 +39,7 @@ VkPipelineRasterizationStateCreateInfo APipeline_default_rasterizer() {
         .lineWidth = 1.0f};
 }
 
-VkPipelineMultisampleStateCreateInfo APipeline_default_multisampler() {
+VkPipelineMultisampleStateCreateInfo APipeline_default_multisampler(void) {
     return (VkPipelineMultisampleStateCreateInfo){
         .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
         .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
@@ -67,10 +67,10 @@ VkPipelineColorBlendAttachmentState *APipeline_default_attachments(uint32_t *out
 
 // TODO: not-owning version
 // (remove allocs for temporary params)
-APipelineParams APipeline_default() {
+APipelineParams APipeline_default(uint32_t binding) {
     // stack variable will be freed once function exits
     ARR_ALLOC(VkVertexInputBindingDescription, bindings, 1);
-    bindings[0] = Vertex_binding(0);
+    bindings[0] = Vertex_binding(binding);
     APipelineParams result = {
         .bindingCount = 1,
         .bindings = bindings,
@@ -80,7 +80,7 @@ APipelineParams APipeline_default() {
         .colorBlendLogicOp = VK_LOGIC_OP_COPY,
         .colorBlendConstants = {0.f, 0.f, 0.f, 0.f}
     };
-    result.attributes = Vertex_attributes(0, &result.attributeCount);
+    result.attributes = Vertex_attributes(binding, &result.attributeCount);
     result.colorBlendAttachments = APipeline_default_attachments(&result.colorBlendAttachmentCount);
     return result;
 }

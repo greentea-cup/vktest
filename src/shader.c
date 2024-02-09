@@ -13,7 +13,7 @@ AShader AShader_from_code(
     VkShaderModuleCreateInfo moduleInfo = {
         .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, .codeSize = codeSize, .pCode = code};
     VkShaderModule module;
-    if (vkCreateShaderModule(device, &moduleInfo, VK_NULL_HANDLE, &module) != VK_SUCCESS) {
+    if (vkCreateShaderModule(device, &moduleInfo, NULL, &module) != VK_SUCCESS) {
         return (AShader){.module = NULL};
     }
     return (AShader){.module = module, .stage = stage};

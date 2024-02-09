@@ -13,10 +13,10 @@
 static int create_vulkan_instance(Vulkan *vulkan, SDL_Window *window) {
     VkApplicationInfo appInfo = {
         .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-        .pNext = VK_NULL_HANDLE,
-        .pApplicationName = VK_NULL_HANDLE,
+
+        .pApplicationName = NULL,
         .applicationVersion = 0,
-        .pEngineName = VK_NULL_HANDLE,
+        .pEngineName = NULL,
         .engineVersion = 0,
         .apiVersion = VK_API_VERSION_1_0};
 #ifndef NDEBUG
@@ -34,15 +34,14 @@ static int create_vulkan_instance(Vulkan *vulkan, SDL_Window *window) {
     SDL_Vulkan_GetInstanceExtensions(window, &ivkExtCount, ivkExtensions);
     VkInstanceCreateInfo ivkCInfo = {
         .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-        .pNext = VK_NULL_HANDLE,
-        .flags = 0,
+
         .pApplicationInfo = &appInfo,
         .enabledLayerCount = layerCount,
         .ppEnabledLayerNames = ivkLayers,
         .enabledExtensionCount = ivkExtCount,
         .ppEnabledExtensionNames = ivkExtensions};
     VkInstance ivk;
-    VkResult res = vkCreateInstance(&ivkCInfo, VK_NULL_HANDLE, &ivk);
+    VkResult res = vkCreateInstance(&ivkCInfo, NULL, &ivk);
     if (res != VK_SUCCESS) {
         eprintf(MSG_ERROR("cannot create vulkan instance: %d"), res);
         vulkan->status = VIS_CANNOT_CREATE_INSTANCE;
@@ -170,8 +169,7 @@ static int create_device(Vulkan *vulkan) {
     for (uint32_t i = 0; i < qFamCount; i++) {
         devQCInfo[i] = (VkDeviceQueueCreateInfo){
             .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-            .pNext = VK_NULL_HANDLE,
-            .flags = 0,
+
             .queueFamilyIndex = i,
             .queueCount = 1,
             .pQueuePriorities = &qPriority};
@@ -185,16 +183,15 @@ static int create_device(Vulkan *vulkan) {
 
     VkDeviceCreateInfo devCInfo = {
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-        .pNext = VK_NULL_HANDLE,
-        .flags = 0,
+
         .queueCreateInfoCount = qFamCount,
         .pQueueCreateInfos = devQCInfo,
-        .enabledLayerCount = 0,                // deprecated
-        .ppEnabledLayerNames = VK_NULL_HANDLE, // deprecated
+        .enabledLayerCount = 0,      // deprecated
+        .ppEnabledLayerNames = NULL, // deprecated
         .enabledExtensionCount = extensionCount,
         .ppEnabledExtensionNames = extensions,
         .pEnabledFeatures = &pDevFeatures};
-    VkResult res = vkCreateDevice(vulkan->pdevice, &devCInfo, VK_NULL_HANDLE, &vulkan->device);
+    VkResult res = vkCreateDevice(vulkan->pdevice, &devCInfo, NULL, &vulkan->device);
     // cleanup
     free(devQCInfo);
     if (res != VK_SUCCESS) {
@@ -226,7 +223,7 @@ static int check_surface_support(Vulkan *vulkan) {
 
 static VkSurfaceFormatKHR get_surface_format(VkPhysicalDevice pdevice, VkSurfaceKHR surface) {
     uint32_t surfFmtCount;
-    vkGetPhysicalDeviceSurfaceFormatsKHR(pdevice, surface, &surfFmtCount, VK_NULL_HANDLE);
+    vkGetPhysicalDeviceSurfaceFormatsKHR(pdevice, surface, &surfFmtCount, NULL);
     ARR_ALLOC(VkSurfaceFormatKHR, surfFormats, surfFmtCount);
     vkGetPhysicalDeviceSurfaceFormatsKHR(pdevice, surface, &surfFmtCount, surfFormats);
     VkSurfaceFormatKHR surfFormat = surfFormats[0]; //
@@ -236,7 +233,7 @@ static VkSurfaceFormatKHR get_surface_format(VkPhysicalDevice pdevice, VkSurface
 
 static VkPresentModeKHR get_present_mode(VkPhysicalDevice pdevice, VkSurfaceKHR surface) {
     uint32_t presentModeCount;
-    vkGetPhysicalDeviceSurfacePresentModesKHR(pdevice, surface, &presentModeCount, VK_NULL_HANDLE);
+    vkGetPhysicalDeviceSurfacePresentModesKHR(pdevice, surface, &presentModeCount, NULL);
     ARR_ALLOC(VkPresentModeKHR, presentModes, presentModeCount);
     vkGetPhysicalDeviceSurfacePresentModesKHR(pdevice, surface, &presentModeCount, presentModes);
     VkPresentModeKHR thePresentMode = VK_PRESENT_MODE_FIFO_KHR;
@@ -265,7 +262,7 @@ static int create_swapchain(Vulkan *vulkan) {
     // create swapchain
     VkSharingMode imageShareMode = VK_SHARING_MODE_EXCLUSIVE;
     uint32_t qFamIdxCount = 0;
-    uint32_t const *qFamIndices = VK_NULL_HANDLE;
+    uint32_t const *qFamIndices = NULL;
     uint32_t const qfids[] = {vulkan->graphicsQFI, vulkan->presentQFI};
     if (qfids[0] != qfids[1]) { // different graphics and present queues
         imageShareMode = VK_SHARING_MODE_CONCURRENT;
@@ -277,8 +274,7 @@ static int create_swapchain(Vulkan *vulkan) {
     if (maxImageCount != 0 && imageCount > maxImageCount) imageCount = maxImageCount;
     VkSwapchainCreateInfoKHR swcCInfo = {
         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-        .pNext = VK_NULL_HANDLE,
-        .flags = 0,
+
         .surface = vulkan->surface,
         .minImageCount = surfCaps.minImageCount + 1,
         .imageFormat = surfFormat.format,
@@ -294,16 +290,14 @@ static int create_swapchain(Vulkan *vulkan) {
         .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
         .presentMode = presentMode,
         .clipped = VK_TRUE,
-        .oldSwapchain = VK_NULL_HANDLE};
-    VkResult res =
-        vkCreateSwapchainKHR(vulkan->device, &swcCInfo, VK_NULL_HANDLE, &vulkan->swapchain);
+        .oldSwapchain = NULL};
+    VkResult res = vkCreateSwapchainKHR(vulkan->device, &swcCInfo, NULL, &vulkan->swapchain);
     if (res != VK_SUCCESS) {
         eprintf(MSG_ERROR("cannot create swapchain: %d"), res);
         vulkan->status = VIS_CANNOT_CREATE_SWAPCHAIN;
         return 1;
     }
-    vkGetSwapchainImagesKHR(
-        vulkan->device, vulkan->swapchain, &vulkan->swcImageCount, VK_NULL_HANDLE);
+    vkGetSwapchainImagesKHR(vulkan->device, vulkan->swapchain, &vulkan->swcImageCount, NULL);
     vulkan->swcImages = ARR_INPLACE_ALLOC(VkImage, vulkan->swcImageCount);
     vkGetSwapchainImagesKHR(
         vulkan->device, vulkan->swapchain, &vulkan->swcImageCount, vulkan->swcImages);
@@ -331,9 +325,8 @@ static int create_image_views(Vulkan *vulkan) {
     };
     VkImageViewCreateInfo imageViewCInfo = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .pNext = VK_NULL_HANDLE,
-        .flags = 0,
-        .image = VK_NULL_HANDLE,
+
+        .image = NULL,
         .viewType = VK_IMAGE_VIEW_TYPE_2D,
         .format = vulkan->swcImageFormat,
         .components = compMap,
@@ -344,8 +337,7 @@ static int create_image_views(Vulkan *vulkan) {
 
     for (uint32_t i = 0; i < vulkan->swcImageCount; i++) {
         imageViewCInfo.image = vulkan->swcImages[i];
-        res = vkCreateImageView(
-            vulkan->device, &imageViewCInfo, VK_NULL_HANDLE, vulkan->swcImageViews + i);
+        res = vkCreateImageView(vulkan->device, &imageViewCInfo, NULL, vulkan->swcImageViews + i);
         if (res != VK_SUCCESS) {
             eprintf(MSG_ERROR("cannot create image view: %d"), res);
             return 1;
@@ -361,7 +353,7 @@ static int create_image_views(Vulkan *vulkan) {
  */
 static int create_render_pass(Vulkan *vulkan) {
     VkAttachmentDescription attachDesc = {
-        .flags = 0,
+
         .format = vulkan->swcImageFormat,
         .samples = VK_SAMPLE_COUNT_1_BIT,
         .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
@@ -375,16 +367,16 @@ static int create_render_pass(Vulkan *vulkan) {
         .attachment = 0, .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
 
     VkSubpassDescription subpassDesc = {
-        .flags = 0,
+
         .pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
         .inputAttachmentCount = 0,
-        .pInputAttachments = VK_NULL_HANDLE,
+        .pInputAttachments = NULL,
         .colorAttachmentCount = 1,
         .pColorAttachments = &attachRef,
-        .pResolveAttachments = VK_NULL_HANDLE,
-        .pDepthStencilAttachment = VK_NULL_HANDLE,
+        .pResolveAttachments = NULL,
+        .pDepthStencilAttachment = NULL,
         .preserveAttachmentCount = 0,
-        .pPreserveAttachments = VK_NULL_HANDLE};
+        .pPreserveAttachments = NULL};
 
     VkSubpassDependency subpassDep = {
         .srcSubpass = VK_SUBPASS_EXTERNAL,
@@ -396,8 +388,7 @@ static int create_render_pass(Vulkan *vulkan) {
         .dependencyFlags = 0};
     VkRenderPassCreateInfo rpCInfo = {
         .sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
-        .pNext = VK_NULL_HANDLE,
-        .flags = 0,
+
         .attachmentCount = 1,
         .pAttachments = &attachDesc,
         .subpassCount = 1,
@@ -405,8 +396,7 @@ static int create_render_pass(Vulkan *vulkan) {
         .dependencyCount = 1,
         .pDependencies = &subpassDep};
 
-    VkResult res =
-        vkCreateRenderPass(vulkan->device, &rpCInfo, VK_NULL_HANDLE, &vulkan->renderPass);
+    VkResult res = vkCreateRenderPass(vulkan->device, &rpCInfo, NULL, &vulkan->renderPass);
     if (res != VK_SUCCESS) {
         eprintf(MSG_ERROR("cannot create render pass: %d"), res);
         vulkan->status = VIS_CANNOT_CREATE_RENDER_PASS;
@@ -423,11 +413,10 @@ static int create_render_pass(Vulkan *vulkan) {
 static int create_framebuffers(Vulkan *vulkan) {
     VkFramebufferCreateInfo fbCInfo = {
         .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-        .pNext = VK_NULL_HANDLE,
-        .flags = 0,
+
         .renderPass = vulkan->renderPass,
         .attachmentCount = 1,
-        .pAttachments = VK_NULL_HANDLE,
+        .pAttachments = NULL,
         .width = vulkan->swcExtent.width,
         .height = vulkan->swcExtent.height,
         .layers = 1};
@@ -435,7 +424,7 @@ static int create_framebuffers(Vulkan *vulkan) {
     for (uint32_t i = 0; i < vulkan->swcImageCount; i++) {
         fbCInfo.pAttachments = vulkan->swcImageViews + i;
         VkResult res =
-            vkCreateFramebuffer(vulkan->device, &fbCInfo, VK_NULL_HANDLE, vulkan->framebuffers + i);
+            vkCreateFramebuffer(vulkan->device, &fbCInfo, NULL, vulkan->framebuffers + i);
         if (res != VK_SUCCESS) {
             eprintf("cannot create framebuffer #%d: %d", i, res);
             vulkan->status = VIS_CANNOT_CREATE_FRAMEBUFFER;
@@ -505,31 +494,30 @@ error:
 
 static void cleanup_swapchain(Vulkan *vulkan) {
     for (uint32_t i = 0; i < vulkan->swcImageCount; i++)
-        vkDestroyFramebuffer(vulkan->device, vulkan->framebuffers[i], VK_NULL_HANDLE);
+        vkDestroyFramebuffer(vulkan->device, vulkan->framebuffers[i], NULL);
     for (uint32_t i = 0; i < vulkan->swcImageCount; i++)
-        vkDestroyImageView(vulkan->device, vulkan->swcImageViews[i], VK_NULL_HANDLE);
-    vkDestroySwapchainKHR(vulkan->device, vulkan->swapchain, VK_NULL_HANDLE);
+        vkDestroyImageView(vulkan->device, vulkan->swcImageViews[i], NULL);
+    vkDestroySwapchainKHR(vulkan->device, vulkan->swapchain, NULL);
     free(vulkan->framebuffers);
     free(vulkan->swcImageViews);
     free(vulkan->swcImages);
 }
 
 void destroy_vulkan(Vulkan *vulkan) {
-    if (vulkan->device == VK_NULL_HANDLE) goto nodevice;
+    if (vulkan->device == NULL) goto nodevice;
     for (uint32_t i = 0; i < vulkan->maxFrames; i++) {
-        vkDestroyFence(vulkan->device, vulkan->frontFences[i], VK_NULL_HANDLE);
-        vkDestroySemaphore(vulkan->device, vulkan->signalSemaphores[i], VK_NULL_HANDLE);
-        vkDestroySemaphore(vulkan->device, vulkan->waitSemaphores[i], VK_NULL_HANDLE);
+        vkDestroyFence(vulkan->device, vulkan->frontFences[i], NULL);
+        vkDestroySemaphore(vulkan->device, vulkan->signalSemaphores[i], NULL);
+        vkDestroySemaphore(vulkan->device, vulkan->waitSemaphores[i], NULL);
     }
     if (vulkan->swcImageCount != 0) {
         vkFreeCommandBuffers(
             vulkan->device, vulkan->commandPool, vulkan->maxFrames, vulkan->commandBuffers);
-        vkDestroyCommandPool(vulkan->device, vulkan->commandPool, VK_NULL_HANDLE);
+        vkDestroyCommandPool(vulkan->device, vulkan->commandPool, NULL);
     }
-    if (vulkan->renderPass != VK_NULL_HANDLE)
-        vkDestroyRenderPass(vulkan->device, vulkan->renderPass, VK_NULL_HANDLE);
+    if (vulkan->renderPass != NULL) vkDestroyRenderPass(vulkan->device, vulkan->renderPass, NULL);
     cleanup_swapchain(vulkan);
-    vkDestroyDevice(vulkan->device, VK_NULL_HANDLE);
+    vkDestroyDevice(vulkan->device, NULL);
 nodevice:
     // regular free at the end for convenience
     // free(vulkan->backFences);
@@ -537,9 +525,8 @@ nodevice:
     free(vulkan->signalSemaphores);
     free(vulkan->waitSemaphores);
     free(vulkan->commandBuffers);
-    if (vulkan->surface != VK_NULL_HANDLE)
-        vkDestroySurfaceKHR(vulkan->ivk, vulkan->surface, VK_NULL_HANDLE);
-    vkDestroyInstance(vulkan->ivk, VK_NULL_HANDLE);
+    if (vulkan->surface != NULL) vkDestroySurfaceKHR(vulkan->ivk, vulkan->surface, NULL);
+    vkDestroyInstance(vulkan->ivk, NULL);
 }
 
 /*
