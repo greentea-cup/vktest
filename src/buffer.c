@@ -22,56 +22,6 @@ VkDescriptorSetLayout create_descriptor_set_layout(VkDevice device) {
     return descriptorSetLayout;
 }
 
-/*
- * 0 on success
- * 1 if buffer copy failed
- */
-int copy_buffer(
-    VkDevice device, VkCommandPool commandPool, VkQueue drawQueue, VulkanCopyBufferParams args) {
-    if (args.size == 0) return 0;
-    VkCommandBufferAllocateInfo cbAInfo = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .pNext = NULL,
-        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandPool = commandPool,
-        .commandBufferCount = 1};
-
-    VkCommandBuffer cb;
-    vkAllocateCommandBuffers(device, &cbAInfo, &cb);
-
-    VkCommandBufferBeginInfo cbBInfo = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .pNext = NULL,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-        .pInheritanceInfo = NULL};
-    vkBeginCommandBuffer(cb, &cbBInfo);
-
-    VkBufferCopy copyRegion = {
-        .srcOffset = args.srcOffset, .dstOffset = args.dstOffset, .size = args.size};
-    vkCmdCopyBuffer(cb, args.src, args.dst, 1, &copyRegion);
-    vkEndCommandBuffer(cb);
-
-    VkSubmitInfo sInfo = {
-        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .pNext = NULL,
-        .waitSemaphoreCount = 0,
-        .pWaitSemaphores = NULL,
-        .pWaitDstStageMask = NULL,
-        .commandBufferCount = 1,
-        .pCommandBuffers = &cb,
-        .signalSemaphoreCount = 0,
-        .pSignalSemaphores = NULL};
-    vkQueueSubmit(drawQueue, 1, &sInfo, NULL);
-    vkQueueWaitIdle(drawQueue);
-
-    vkFreeCommandBuffers(device, commandPool, 1, &cb);
-    return 0;
-}
-
-/*
- * returns valid memory type index on success
- * -1 if not found
- */
 int32_t find_memory_type(
     VkPhysicalDevice pdevice, uint32_t typeFilter, VkMemoryPropertyFlagBits properties) {
     VkPhysicalDeviceMemoryProperties memProps;

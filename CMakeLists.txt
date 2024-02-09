@@ -12,7 +12,7 @@ find_package(SDL2 REQUIRED CONFIG REQUIRED COMPONENTS SDL2)
 find_package(SDL2 REQUIRED CONFIG COMPONENTS SDL2main)
 find_package(Vulkan REQUIRED COMPONENTS glslangValidator)
 
-file(GLOB_RECURSE PROJECT_SOURCE_FILES "src/*")
+file(GLOB_RECURSE PROJECT_SOURCE_FILES "src/*.c" "extern/*.c")
 add_executable(${PROJECT_NAME} ${PROJECT_SOURCE_FILES})
 target_compile_options(
     ${PROJECT_NAME} PRIVATE
@@ -28,7 +28,7 @@ if (TARGET SDL2::SDL2main)
     target_link_libraries(${PROJECT_NAME} PRIVATE SDL2main)
 endif()
 target_link_libraries(${PROJECT_NAME} PRIVATE SDL2::SDL2 Vulkan::Vulkan m)
-target_include_directories(${PROJECT_NAME} PRIVATE "include/" "extern/cglm/include/")
+target_include_directories(${PROJECT_NAME} PRIVATE "include/" "extern/cglm/include/" "extern/lodepng/")
 
 # https://gist.github.com/evilactually/a0d191701cb48f157b05be7f74d79396
 # GLOB instead of GLOB_RECURSE because subdirs are pain

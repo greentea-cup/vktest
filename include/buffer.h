@@ -6,18 +6,17 @@
 VkDescriptorSetLayout create_descriptor_set_layout(VkDevice device);
 
 typedef struct {
-    VkBuffer src;
-    VkBuffer dst;
-    VkDeviceSize srcOffset;
-    VkDeviceSize dstOffset;
-    VkDeviceSize size;
-} VulkanCopyBufferParams;
-
-typedef struct {
     uint32_t bufferOffset;
     uint32_t dataOffset;
     uint32_t size;
 } FillBufferParams;
+
+/*
+ * returns valid memory type index on success
+ * -1 if not found
+ */
+int32_t find_memory_type(
+    VkPhysicalDevice pdevice, uint32_t typeFilter, VkMemoryPropertyFlagBits properties);
 
 /*
  * Returns valid VkBuffer,
@@ -67,13 +66,6 @@ VkBuffer create_index_buffer(
 VkBuffer *create_uniform_buffers(
     VkDevice device, VkPhysicalDevice pdevice, uint32_t count, uint32_t buffersSize,
     VkDeviceMemory **out_bufferMemories, void ***out_buffersMapped);
-
-/*
- * 0 on success
- * 1 if buffer copy failed
- */
-int copy_buffer(
-    VkDevice device, VkCommandPool commandPool, VkQueue drawQueue, VulkanCopyBufferParams args);
 
 /*
  * 0 on success

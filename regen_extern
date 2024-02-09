@@ -1,10 +1,35 @@
 #!/bin/bash
+
+source .bash_common
+
+function clone() {
+    git clone -n --depth=1 --filter=tree:0 \
+        $CLONE_ARGS $REPO_URL $REPO_NAME
+    abort_on_error
+    cd $REPO_NAME
+    git sparse-checkout set --no-cone \
+        $FILES
+    abort_on_error
+    git checkout
+    abort_on_error
+    cd ..
+}
+
+msg_info "Removing 'extern' dir"
 rm -rf extern
+msg_info "Cloning repositories"
 mkdir extern
 cd extern
-git clone -n --depth=1 --filter=tree:0 --branch=v0.9.2 https://github.com/recp/cglm.git
-cd cglm
-git sparse-checkout set --no-cone /LICENSE /include/cglm/
-git checkout
-cd ..
+REPO_NAME="cglm" \
+    REPO_URL="https://github.com/recp/cglm.git" \
+    CLONE_ARGS="--branch=v0.9.2" \
+    FILES="/LICENSE /include/cglm/" \
+    clone
+REPO_NAME="lodepng" \
+    REPO_URL="https://github.com/lvandeve/lodepng.git" \
+    CLONE_ARGS="--branch=master" \
+    FILES="/LICENSE /lodepng.cpp /lodepng.h" \
+    clone
+# this is intended by author
+mv lodepng/lodepng.cpp lodepng/lodepng.c
 
