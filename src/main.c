@@ -39,7 +39,7 @@ int main(void) {
     VkDescriptorSetLayout descriptorSetLayout = create_descriptor_set_layout(vulkan.device);
     VkPipelineLayout plLayout =
         create_pipeline_layout(vulkan.device, 1, &descriptorSetLayout, 0, NULL);
-    uint32_t uBufBinding = 0; // binding index for uniform buffers in shaders
+    uint32_t uBufBinding = 0, samplerBinding = 1; // binding index for uniform buffers in shaders
     APipelineParams plArgs = APipeline_default(uBufBinding);
     VkPipeline graphicsPipeline = create_pipeline(
         vulkan.device, plLayout, vulkan.renderPass, "main", 2, (AShader[]){vertShader, fragShader},
@@ -50,16 +50,21 @@ int main(void) {
     APipelineParams_free(plArgs);
     VkDeviceMemory textureImageMemory;
     VkImage textureImage = create_texture_image(
-        vulkan.device, vulkan.pdevice, "data/textures/test.png", vulkan.commandPool,
+        vulkan.device, vulkan.pdevice, "data/textures/256/1.png", vulkan.commandPool,
         vulkan.drawQueue, &textureImageMemory);
     if (textureImage == NULL) {
         eprintf(MSG_ERROR("cannot create image"));
         goto no_texture_image;
     }
-    VkImageView textureImageView = create_texture_image_view();
+    VkImageView textureImageView = create_texture_image_view(vulkan.device, textureImage);
     if (textureImageView == NULL) {
-        eprintf(MSG_ERROR("cannot create image view"));
+        eprintf(MSG_ERROR("failed to create image view"));
         goto no_texture_image_view;
+    }
+    VkSampler textureSampler = create_sampler(vulkan.device);
+    if (textureSampler == NULL) {
+        eprintf(MSG_ERROR("failed to create texture sampler"));
+        goto no_texture_sampler;
     }
 
     struct MVP {
@@ -72,24 +77,26 @@ int main(void) {
 
     Vertex vertexData[] = {
   // 0
-        {.pos = {-1., -1.}, .color = RGB(0x7f7f7f)},
-        {.pos = {+1., -1.}, .color = RGB(0x0000ff)},
-        {.pos = {-1., +1.}, .color = RGB(0xff0000)},
-        {.pos = {+1., +1.}, .color = RGB(0x00ff00)},
+        {.pos = {-1., -1.}, .color = RGB(0x7f7f7f), .texCoord = {0., 0.}},
+        {.pos = {+1., -1.}, .color = RGB(0x0000ff), .texCoord = {1., 0.}},
+        {.pos = {-1., +1.}, .color = RGB(0xff0000), .texCoord = {0., 1.}},
+        {.pos = {+1., +1.}, .color = RGB(0x00ff00), .texCoord = {1., 1.}},
  // 1
-        {.pos = {+1., +1.}, .color = RGB(0xb11132)},
-        {.pos = {-1., +1.}, .color = RGB(0xa333f1)},
-        {.pos = {+0., +0.}, .color = RGB(0xabcdef)},
-        {.pos = {-1., -1.}, .color = RGB(0x422245)},
-        {.pos = {+1., -1.}, .color = RGB(0xa2abf3)},
+        {.pos = {+1., +1.}, .color = RGB(0xb11132), .texCoord = {1., 1.}},
+        {.pos = {-1., +1.}, .color = RGB(0xa333f1), .texCoord = {0., 1.}},
+        {.pos = {+0., +0.}, .color = RGB(0xabcdef), .texCoord = {.5, .5}},
+        {.pos = {-1., -1.}, .color = RGB(0x422245), .texCoord = {0., 0.}},
+        {.pos = {+1., -1.}, .color = RGB(0xa2abf3), .texCoord = {1., 0.}},
  // 2
     };
     VertexIdx indices[] = {
-        0, 1, 2, 2, 1, 3,                  // 0
-        4, 5, 6, 6, 5, 7, 7, 8, 6, 6, 8, 4 // 1
+        0, 1, 2, 2, 1, 3,                   // 0 front
+        3, 1, 2, 2, 1, 0,                   // 0 back
+        4, 5, 6, 6, 5, 7, 7, 8, 6, 6, 8, 4, // 1 front
+        4, 8, 6, 6, 8, 7, 7, 5, 6, 6, 5, 4, // 1 back
     };
-    uint32_t offsets[] = {0, 6};
-    uint32_t lengths[] = {6, 12};
+    uint32_t offsets[] = {0, 12};
+    uint32_t lengths[] = {12, 24};
     uint32_t index = 0;
     uint32_t presetLength = 2;
     uint32_t bufferSize = sizeof(vertexData); // sizeof(*vertexData) * vertexCount;
@@ -108,13 +115,14 @@ int main(void) {
         vulkan.device, vulkan.pdevice, vulkan.maxFrames, uBufSize, &uBufsMem, &uBufsMapped);
     // end create buffers
     // create descriptor pool
-    VkDescriptorPoolSize poolSize = {
-        .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount = vulkan.maxFrames};
+    VkDescriptorPoolSize poolSizes[] = {
+        {.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         .descriptorCount = vulkan.maxFrames},
+        {.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount = vulkan.maxFrames}
+    };
     VkDescriptorPoolCreateInfo poolInfo = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-
-        .poolSizeCount = 1,
-        .pPoolSizes = &poolSize,
+        .poolSizeCount = ARR_LEN(poolSizes),
+        .pPoolSizes = poolSizes,
         .maxSets = vulkan.maxFrames};
     VkDescriptorPool descriptorPool;
     if (vkCreateDescriptorPool(vulkan.device, &poolInfo, NULL, &descriptorPool) != VK_SUCCESS) {
@@ -128,7 +136,6 @@ int main(void) {
     for (uint32_t i = 0; i < vulkan.maxFrames; i++) { layouts[i] = descriptorSetLayout; }
     VkDescriptorSetAllocateInfo dsAInfo = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-
         .descriptorPool = descriptorPool,
         .descriptorSetCount = vulkan.maxFrames,
         .pSetLayouts = layouts};
@@ -144,17 +151,30 @@ int main(void) {
             .offset = 0,
             .range = sizeof(struct MVP) // VK_WHOLE_SIZE
         };
-        VkWriteDescriptorSet descriptorWrite = {
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = descriptorSets[i],
-            .dstBinding = uBufBinding,
-            .dstArrayElement = 0, // from
-            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = 1, // count
-            .pBufferInfo = &bufInfo,
-            .pImageInfo = NULL;
+        VkDescriptorImageInfo imageInfo = {
+            .sampler = textureSampler,
+            .imageView = textureImageView,
+            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+        VkWriteDescriptorSet descriptorWrites[] = {
+            {
+             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+             .dstSet = descriptorSets[i],
+             .dstBinding = uBufBinding,
+             .dstArrayElement = 0, // from
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+             .descriptorCount = 1, // count
+                .pBufferInfo = &bufInfo,
+             },
+            {.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+             .dstSet = descriptorSets[i],
+             .dstBinding = samplerBinding,
+             .dstArrayElement = 0,
+             .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+             .descriptorCount = 1,
+             .pImageInfo = &imageInfo}
+        };
         // device, descriptor count to write, which to write, count to copy, which to copy
-        vkUpdateDescriptorSets(vulkan.device, 1, &descriptorWrite, 0, NULL);
+        vkUpdateDescriptorSets(vulkan.device, ARR_LEN(descriptorWrites), descriptorWrites, 0, NULL);
     }
     // end create descriptor sets
     // copy data to buffer
@@ -280,7 +300,10 @@ int main(void) {
             clock_gettime(CLOCK_MONOTONIC, &currentTime0);
             currentTimeNS = currentTime0.tv_nsec;
         }
-        glm_rotate(mvp.model, currentTimeNS * 2e-9 * glm_rad(90.), axis);
+        float rotationTime = currentTimeNS * 2e-9;
+        glm_rotate(mvp.model, 1. * rotationTime * glm_rad(180), (vec3){1, 0, 0});
+        glm_rotate(mvp.model, 1. * rotationTime * glm_rad(180), (vec3){0, 1, 0});
+        glm_rotate(mvp.model, 1. * rotationTime * glm_rad(180), (vec3){0, 0, 1});
         glm_lookat((vec3){2, 2, 2}, (vec3){0, 0, 0}, axis, mvp.view);
         glm_perspective(glm_rad(45), aspect, 0.1, 10, mvp.proj);
         mvp.proj[1][1] *= -1;
@@ -341,6 +364,9 @@ descriptor_pool_failed:
         vkFreeMemory(vulkan.device, uBufsMem[i], NULL);
         vkDestroyBuffer(vulkan.device, uBuffers[i], NULL);
     }
+    vkDestroySampler(vulkan.device, textureSampler, NULL);
+no_texture_sampler:
+    vkDestroyImageView(vulkan.device, textureImageView, NULL);
 no_texture_image_view:
     vkFreeMemory(vulkan.device, textureImageMemory, NULL);
     vkDestroyImage(vulkan.device, textureImage, NULL);

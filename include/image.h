@@ -19,4 +19,10 @@ VkImage create_texture_image(
     VkDevice device, VkPhysicalDevice pdevice, char const *image_path, VkCommandPool commandPool,
     VkQueue drawQueue, VkDeviceMemory *out_imageMemory);
 
+VkImageView create_image_view(VkDevice device, VkImage image, VkFormat format);
+
+VkImageView create_texture_image_view(VkDevice device, VkImage image);
+
+VkSampler create_sampler(VkDevice device);
+
 #endif

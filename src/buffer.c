@@ -3,16 +3,22 @@
 #include <string.h>
 
 VkDescriptorSetLayout create_descriptor_set_layout(VkDevice device) {
-    VkDescriptorSetLayoutBinding binding = {
-        .binding = 0,
-        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        .descriptorCount = 1,
-        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-        .pImmutableSamplers = NULL};
+    VkDescriptorSetLayoutBinding bindings[] = {
+        {.binding = 0,
+         .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+         .descriptorCount = 1,
+         .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+         .pImmutableSamplers = NULL},
+        {.binding = 1,
+         .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+         .descriptorCount = 1,
+         .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+         .pImmutableSamplers = NULL}
+    };
     VkDescriptorSetLayoutCreateInfo info = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .bindingCount = 1,
-        .pBindings = &binding};
+        .bindingCount = ARR_LEN(bindings),
+        .pBindings = bindings};
     VkDescriptorSetLayout descriptorSetLayout;
     VkResult res = vkCreateDescriptorSetLayout(device, &info, NULL, &descriptorSetLayout);
     if (res != VK_SUCCESS) {

@@ -1,6 +1,7 @@
 #include "my_vulkan.h"
 #include "SDL_vulkan.h"
 #include "command.h"
+#include "image.h"
 #include "pipeline.h"
 #include "shader.h"
 #include "sync.h"
@@ -13,7 +14,6 @@
 static int create_vulkan_instance(Vulkan *vulkan, SDL_Window *window) {
     VkApplicationInfo appInfo = {
         .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-
         .pApplicationName = NULL,
         .applicationVersion = 0,
         .pEngineName = NULL,
@@ -68,14 +68,14 @@ static int create_surface(Vulkan *vulkan, SDL_Window *window) {
  * returns provided physical device suitablility score
  */
 static int calculate_physical_device_suitability(VkPhysicalDevice pdevice) {
-    VkPhysicalDeviceProperties pdevProps;
-    VkPhysicalDeviceFeatures pdevFeatures;
-    vkGetPhysicalDeviceProperties(pdevice, &pdevProps);
-    vkGetPhysicalDeviceFeatures(pdevice, &pdevFeatures);
+    VkPhysicalDeviceProperties props;
+    VkPhysicalDeviceFeatures features;
+    vkGetPhysicalDeviceProperties(pdevice, &props);
+    vkGetPhysicalDeviceFeatures(pdevice, &features);
 
-    if (!pdevFeatures.geometryShader) return 0;
+    if (!features.geometryShader || !features.samplerAnisotropy) return 0;
     int score = 0;
-    switch (pdevProps.deviceType) {
+    switch (props.deviceType) {
     default: break;
     case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU: score += 1000; break;
     case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU: score += 500; break;
@@ -169,7 +169,6 @@ static int create_device(Vulkan *vulkan) {
     for (uint32_t i = 0; i < qFamCount; i++) {
         devQCInfo[i] = (VkDeviceQueueCreateInfo){
             .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-
             .queueFamilyIndex = i,
             .queueCount = 1,
             .pQueuePriorities = &qPriority};
@@ -178,19 +177,17 @@ static int create_device(Vulkan *vulkan) {
     // physical device extensions
     char const *extensions[VK_MAX_EXTENSION_NAME_SIZE] = {"VK_KHR_swapchain"};
     uint32_t extensionCount = 1;
-    VkPhysicalDeviceFeatures pDevFeatures;
-    vkGetPhysicalDeviceFeatures(vulkan->pdevice, &pDevFeatures);
+    VkPhysicalDeviceFeatures features;
+    vkGetPhysicalDeviceFeatures(vulkan->pdevice, &features);
+    features.samplerAnisotropy = VK_TRUE;
 
     VkDeviceCreateInfo devCInfo = {
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-
         .queueCreateInfoCount = qFamCount,
         .pQueueCreateInfos = devQCInfo,
-        .enabledLayerCount = 0,      // deprecated
-        .ppEnabledLayerNames = NULL, // deprecated
         .enabledExtensionCount = extensionCount,
         .ppEnabledExtensionNames = extensions,
-        .pEnabledFeatures = &pDevFeatures};
+        .pEnabledFeatures = &features};
     VkResult res = vkCreateDevice(vulkan->pdevice, &devCInfo, NULL, &vulkan->device);
     // cleanup
     free(devQCInfo);
@@ -274,7 +271,6 @@ static int create_swapchain(Vulkan *vulkan) {
     if (maxImageCount != 0 && imageCount > maxImageCount) imageCount = maxImageCount;
     VkSwapchainCreateInfoKHR swcCInfo = {
         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-
         .surface = vulkan->surface,
         .minImageCount = surfCaps.minImageCount + 1,
         .imageFormat = surfFormat.format,
@@ -311,37 +307,15 @@ static int create_swapchain(Vulkan *vulkan) {
  * 1 if cannot create image view
  */
 static int create_image_views(Vulkan *vulkan) {
-    VkComponentMapping compMap = {
-        .r = VK_COMPONENT_SWIZZLE_IDENTITY,
-        .g = VK_COMPONENT_SWIZZLE_IDENTITY,
-        .b = VK_COMPONENT_SWIZZLE_IDENTITY,
-        .a = VK_COMPONENT_SWIZZLE_IDENTITY};
-    VkImageSubresourceRange imageSubresRange = {
-        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-        .baseMipLevel = 0,
-        .levelCount = 1,
-        .baseArrayLayer = 0,
-        .layerCount = 1 // see VkSwapchainCreateInfoKHR in Khronos registry
-    };
-    VkImageViewCreateInfo imageViewCInfo = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-
-        .image = NULL,
-        .viewType = VK_IMAGE_VIEW_TYPE_2D,
-        .format = vulkan->swcImageFormat,
-        .components = compMap,
-        .subresourceRange = imageSubresRange};
     vulkan->swcImageViews = ARR_INPLACE_ALLOC(VkImageView, vulkan->swcImageCount);
-
-    VkResult res;
-
     for (uint32_t i = 0; i < vulkan->swcImageCount; i++) {
-        imageViewCInfo.image = vulkan->swcImages[i];
-        res = vkCreateImageView(vulkan->device, &imageViewCInfo, NULL, vulkan->swcImageViews + i);
-        if (res != VK_SUCCESS) {
-            eprintf(MSG_ERROR("cannot create image view: %d"), res);
+        VkImageView swcImageView =
+            create_image_view(vulkan->device, vulkan->swcImages[i], vulkan->swcImageFormat);
+        if (swcImageView == NULL) {
+            eprintf(MSG_ERROR("failed create image view"));
             return 1;
         }
+        vulkan->swcImageViews[i] = swcImageView;
     }
     return 0;
 }
@@ -353,7 +327,6 @@ static int create_image_views(Vulkan *vulkan) {
  */
 static int create_render_pass(Vulkan *vulkan) {
     VkAttachmentDescription attachDesc = {
-
         .format = vulkan->swcImageFormat,
         .samples = VK_SAMPLE_COUNT_1_BIT,
         .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
@@ -367,7 +340,6 @@ static int create_render_pass(Vulkan *vulkan) {
         .attachment = 0, .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
 
     VkSubpassDescription subpassDesc = {
-
         .pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
         .inputAttachmentCount = 0,
         .pInputAttachments = NULL,
@@ -386,9 +358,8 @@ static int create_render_pass(Vulkan *vulkan) {
         .srcAccessMask = 0,
         .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
         .dependencyFlags = 0};
-    VkRenderPassCreateInfo rpCInfo = {
+    VkRenderPassCreateInfo renderPassInfo = {
         .sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
-
         .attachmentCount = 1,
         .pAttachments = &attachDesc,
         .subpassCount = 1,
@@ -396,7 +367,7 @@ static int create_render_pass(Vulkan *vulkan) {
         .dependencyCount = 1,
         .pDependencies = &subpassDep};
 
-    VkResult res = vkCreateRenderPass(vulkan->device, &rpCInfo, NULL, &vulkan->renderPass);
+    VkResult res = vkCreateRenderPass(vulkan->device, &renderPassInfo, NULL, &vulkan->renderPass);
     if (res != VK_SUCCESS) {
         eprintf(MSG_ERROR("cannot create render pass: %d"), res);
         vulkan->status = VIS_CANNOT_CREATE_RENDER_PASS;

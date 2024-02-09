@@ -1,11 +1,14 @@
 #ifndef VERTEX_H
 #define VERTEX_H
 
+#include <cglm/vec2.h>
+#include <cglm/vec3.h>
 #include <vulkan/vulkan.h>
 
 typedef struct Vertex {
-    float pos[2];
-    float color[3];
+    vec2 pos;
+    vec3 color;
+    vec2 texCoord;
 } Vertex;
 
 VkVertexInputBindingDescription Vertex_binding(uint32_t binding);

@@ -199,23 +199,60 @@ no_image:
     return NULL;
 }
 
-static int create_tetxure_image_view() {
+VkImageView create_image_view(VkDevice device, VkImage image, VkFormat format) {
     VkImageViewCreateInfo viewInfo = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
         .image = image,
         .viewType = VK_IMAGE_VIEW_TYPE_2D,
         .format = format,
-        .components = compMap,
-        .subresourceRange = imageSubresRange};
-    vulkan->swcImageViews = ARR_INPLACE_ALLOC(VkImageView, vulkan->swcImageCount);
+        .components.r = VK_COMPONENT_SWIZZLE_IDENTITY,
+        .components.g = VK_COMPONENT_SWIZZLE_IDENTITY,
+        .components.b = VK_COMPONENT_SWIZZLE_IDENTITY,
+        .components.a = VK_COMPONENT_SWIZZLE_IDENTITY,
+        .subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .subresourceRange.baseMipLevel = 0,
+        .subresourceRange.levelCount = 1,
+        .subresourceRange.baseArrayLayer = 0,
+        .subresourceRange.layerCount = 1};
 
-    VkResult res;
-
-    res = vkCreateImageView(device, &viewInfo, NULL, &imageView);
+    VkImageView imageView;
+    VkResult res = vkCreateImageView(device, &viewInfo, NULL, &imageView);
     if (res != VK_SUCCESS) {
         eprintf(MSG_ERROR("cannot create image view: %d"), res);
-        return 1;
+        return NULL;
     }
+    return imageView;
 }
-return 0;
+
+VkImageView create_texture_image_view(VkDevice device, VkImage image) {
+    return create_image_view(device, image, VK_FORMAT_R8G8B8A8_SRGB);
+}
+
+VkSampler create_sampler(VkDevice device) {
+    // VkPhysicalDeviceProperties.limits.maxSamplerAnisotropy
+    float maxAnisotropy = 4.;
+    VkSamplerCreateInfo samplerInfo = {
+        .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+        .magFilter = VK_FILTER_LINEAR,                  // to arg
+        .minFilter = VK_FILTER_LINEAR,                  // to arg
+        .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,    // to arg
+        .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT, // to arg
+        .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT, // to arg
+        .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT, // to arg
+        .mipLodBias = 0.,                               // to arg
+        .anisotropyEnable = VK_TRUE,                    // to arg
+        .maxAnisotropy = maxAnisotropy,                 // to arg
+        .compareEnable = VK_FALSE,                      // VK_TRUE for percentage-close filtering
+        .compareOp = VK_COMPARE_OP_ALWAYS, // check developer.nvidia gpu gems chapter 11
+        .minLod = 0.,                      // to arg
+        .maxLod = 0.,                      // to arg
+        .borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+        .unnormalizedCoordinates = VK_FALSE};
+    VkSampler sampler;
+    VkResult res = vkCreateSampler(device, &samplerInfo, NULL, &sampler);
+    if (res != VK_SUCCESS) {
+        eprintf(MSG_ERROR("cannot create sampler: %d"), res);
+        return NULL;
+    }
+    return sampler;
 }

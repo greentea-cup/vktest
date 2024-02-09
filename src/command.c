@@ -72,7 +72,7 @@ void record_command_buffer(
     Vulkan *vulkan, VkPipeline pipeline, VkPipelineLayout plLayout, uint32_t currentFrame,
     uint32_t imageIndex, ARecordCmdBuffersParams args) {
     VkCommandBufferBeginInfo cbBInfo = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-    VkClearValue clearValue = {.color = {.uint32 = {154, 52, 205, 0}}};
+    VkClearValue clearValue = {.color = {.float32 = {.325, .375, .75, 0.}}};
     VkRenderPassBeginInfo rpBInfo = {
         .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
         .renderPass = vulkan->renderPass,

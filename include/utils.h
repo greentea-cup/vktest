@@ -9,6 +9,9 @@
 #define ARR_INPLACE_ALLOC(type, count) (type *)malloc(count * sizeof(type))
 #define ARR_ALLOC(type, name, count) type *name = ARR_INPLACE_ALLOC(type, count)
 
+// only works for static arrays
+#define ARR_LEN(arr) (sizeof(arr) / sizeof(*arr))
+
 #define MSG_ERR_START "\033[31mERROR: "
 #define MSG_INFO_START "\033[32m"
 #define MSG_END "\033[0m\n"
