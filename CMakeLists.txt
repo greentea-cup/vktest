@@ -23,6 +23,8 @@ if (CMAKE_C_COMPILER_ID STREQUAL "Clang")
 elseif (CMAKE_C_COMPILER_ID STREQUAL "GNU")
     target_compile_options(${PROJECT_NAME} PRIVATE -fdiagnostics-color=always)
 endif()
+# cglm depth zero to one
+target_compile_definitions(${PROJECT_NAME} PRIVATE CGLM_FORCE_DEPTH_ZERO_TO_ONE)
 
 if (TARGET SDL2::SDL2main)
     target_link_libraries(${PROJECT_NAME} PRIVATE SDL2main)

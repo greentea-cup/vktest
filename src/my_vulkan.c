@@ -34,7 +34,6 @@ static int create_vulkan_instance(Vulkan *vulkan, SDL_Window *window) {
     SDL_Vulkan_GetInstanceExtensions(window, &ivkExtCount, ivkExtensions);
     VkInstanceCreateInfo ivkCInfo = {
         .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-
         .pApplicationInfo = &appInfo,
         .enabledLayerCount = layerCount,
         .ppEnabledLayerNames = ivkLayers,
@@ -384,7 +383,6 @@ static int create_render_pass(Vulkan *vulkan) {
 static int create_framebuffers(Vulkan *vulkan) {
     VkFramebufferCreateInfo fbCInfo = {
         .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-
         .renderPass = vulkan->renderPass,
         .attachmentCount = 1,
         .pAttachments = NULL,

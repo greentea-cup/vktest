@@ -13,7 +13,7 @@ VkVertexInputAttributeDescription *Vertex_attributes(uint32_t binding, uint32_t 
     result[0] = (VkVertexInputAttributeDescription){
         .binding = binding,
         .location = 0,
-        .format = VK_FORMAT_R32G32_SFLOAT,
+        .format = VK_FORMAT_R32G32B32_SFLOAT,
         .offset = offsetof(Vertex, pos)};
     result[1] = (VkVertexInputAttributeDescription){
         .binding = binding,

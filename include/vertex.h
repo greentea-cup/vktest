@@ -6,7 +6,7 @@
 #include <vulkan/vulkan.h>
 
 typedef struct Vertex {
-    vec2 pos;
+    vec3 pos;
     vec3 color;
     vec2 texCoord;
 } Vertex;

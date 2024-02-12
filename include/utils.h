@@ -13,9 +13,11 @@
 #define ARR_LEN(arr) (sizeof(arr) / sizeof(*arr))
 
 #define MSG_ERR_START "\033[31mERROR: "
+#define MSG_WARN_START "\033[33mWARNING: "
 #define MSG_INFO_START "\033[32m"
 #define MSG_END "\033[0m\n"
 #define MSG_ERROR(x) MSG_ERR_START x MSG_END
+#define MSG_WARN(x) MSG_WARN_START x MSG_END
 #define MSG_INFO(x) MSG_INFO_START x MSG_END
 #define eprintf(...) fprintf(stderr, __VA_ARGS__)
 

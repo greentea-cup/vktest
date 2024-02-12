@@ -50,7 +50,7 @@ int main(void) {
     APipelineParams_free(plArgs);
     VkDeviceMemory textureImageMemory;
     VkImage textureImage = create_texture_image(
-        vulkan.device, vulkan.pdevice, "data/textures/256/1.png", vulkan.commandPool,
+        vulkan.device, vulkan.pdevice, "data/textures/256/test2.png", vulkan.commandPool,
         vulkan.drawQueue, &textureImageMemory);
     if (textureImage == NULL) {
         eprintf(MSG_ERROR("cannot create image"));
@@ -77,28 +77,26 @@ int main(void) {
 
     Vertex vertexData[] = {
   // 0
-        {.pos = {-1., -1.}, .color = RGB(0x7f7f7f), .texCoord = {0., 0.}},
-        {.pos = {+1., -1.}, .color = RGB(0x0000ff), .texCoord = {1., 0.}},
-        {.pos = {-1., +1.}, .color = RGB(0xff0000), .texCoord = {0., 1.}},
-        {.pos = {+1., +1.}, .color = RGB(0x00ff00), .texCoord = {1., 1.}},
+        {.pos = {-1., -1., 0.},  .color = RGB(0x7f7f7f), .texCoord = {1., 1.}},
+        {.pos = {+1., -1., 0.},  .color = RGB(0x0000ff), .texCoord = {1., 0.}},
+        {.pos = {-1., +1., 0.},  .color = RGB(0xff0000), .texCoord = {0., 1.}},
+        {.pos = {+1., +1., 0.},  .color = RGB(0x00ff00), .texCoord = {0., 0.}},
  // 1
-        {.pos = {+1., +1.}, .color = RGB(0xb11132), .texCoord = {1., 1.}},
-        {.pos = {-1., +1.}, .color = RGB(0xa333f1), .texCoord = {0., 1.}},
-        {.pos = {+0., +0.}, .color = RGB(0xabcdef), .texCoord = {.5, .5}},
-        {.pos = {-1., -1.}, .color = RGB(0x422245), .texCoord = {0., 0.}},
-        {.pos = {+1., -1.}, .color = RGB(0xa2abf3), .texCoord = {1., 0.}},
+        {.pos = {+1., +1., -.5}, .color = RGB(0xb11132), .texCoord = {0., 0.}},
+        {.pos = {-1., +1., -.5}, .color = RGB(0xa333f1), .texCoord = {0., 1.}},
+        {.pos = {+0., +0., -.5}, .color = RGB(0xabcdef), .texCoord = {.5, .5}},
+        {.pos = {-1., -1., -.5}, .color = RGB(0x422245), .texCoord = {1., 1.}},
+        {.pos = {+1., -1., -.5}, .color = RGB(0xa2abf3), .texCoord = {1., 0.}},
  // 2
     };
     VertexIdx indices[] = {
         0, 1, 2, 2, 1, 3,                   // 0 front
-        3, 1, 2, 2, 1, 0,                   // 0 back
         4, 5, 6, 6, 5, 7, 7, 8, 6, 6, 8, 4, // 1 front
-        4, 8, 6, 6, 8, 7, 7, 5, 6, 6, 5, 4, // 1 back
     };
-    uint32_t offsets[] = {0, 12};
-    uint32_t lengths[] = {12, 24};
+    uint32_t offsets[] = {0, 6, 0};
+    uint32_t lengths[] = {6, 12, 18};
     uint32_t index = 0;
-    uint32_t presetLength = 2;
+    uint32_t presetLength = ARR_LEN(offsets);
     uint32_t bufferSize = sizeof(vertexData); // sizeof(*vertexData) * vertexCount;
     uint32_t indexSize = sizeof(indices);
     // uint32_t vertexCount = indexSize / sizeof(*indices);
@@ -201,8 +199,8 @@ int main(void) {
     uint32_t sizeIndex = 0, sizesLength = sizeof(sizes) / (sizeof(*sizes) * 2);
 
     SDL_Event event;
-    char running = 1, fullscreen = 0, border = 1;
-    uint32_t currentFrame = 0, frameno = 0;
+    char running = 1, fullscreen = 0, border = 1, rotate = 1;
+    uint32_t currentFrame = 0;
     float aspect = vulkan.swcExtent.width / (float)vulkan.swcExtent.height;
     while (running) {
         while (SDL_PollEvent(&event)) {
@@ -242,6 +240,7 @@ int main(void) {
                     recreate_swapchain(&vulkan);
                     reset_command_pool(&vulkan);
                     break;
+                case SDL_SCANCODE_H: rotate = !rotate; break;
                 case SDL_SCANCODE_B:
                     border = !border;
                     printf("border: %d\n", border);
@@ -277,7 +276,6 @@ int main(void) {
         // draw frame
         vkWaitForFences(vulkan.device, 1, vulkan.frontFences + currentFrame, VK_TRUE, UINT64_MAX);
         uint32_t imageIndex = 0;
-        frameno++;
         VkResult res = vkAcquireNextImageKHR(
             vulkan.device, vulkan.swapchain, UINT64_MAX, vulkan.waitSemaphores[currentFrame], NULL,
             &imageIndex);
@@ -290,7 +288,6 @@ int main(void) {
             break;
         }
         // update uniform buffer
-        vec3 axis = {0, 0, 1};
         struct MVP mvp = {
             .model = GLM_MAT4_IDENTITY_INIT,
         };
@@ -300,11 +297,11 @@ int main(void) {
             clock_gettime(CLOCK_MONOTONIC, &currentTime0);
             currentTimeNS = currentTime0.tv_nsec;
         }
-        float rotationTime = currentTimeNS * 2e-9;
-        glm_rotate(mvp.model, 1. * rotationTime * glm_rad(180), (vec3){1, 0, 0});
-        glm_rotate(mvp.model, 1. * rotationTime * glm_rad(180), (vec3){0, 1, 0});
-        glm_rotate(mvp.model, 1. * rotationTime * glm_rad(180), (vec3){0, 0, 1});
-        glm_lookat((vec3){2, 2, 2}, (vec3){0, 0, 0}, axis, mvp.view);
+        vec3 axis = {0, 0, 1}, eye = {2, 2, 2};
+        float rotationTime = currentTimeNS * 1e-9;
+        if (rotate) glm_rotate(mvp.model, 2 * GLM_PIf * rotationTime, axis);
+        // if (rotate) glm_vec3_rotate(eye, 2 * GLM_PIf * rotationTime, axis);
+        glm_lookat(eye, (vec3){0, 0, 0}, axis, mvp.view);
         glm_perspective(glm_rad(45), aspect, 0.1, 10, mvp.proj);
         mvp.proj[1][1] *= -1;
 
