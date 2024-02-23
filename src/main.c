@@ -233,7 +233,12 @@ int main(void) {
     SDL_Event event;
     char running = 1, fullscreen = 0, border = 1, timeIncrement = 1;
     uint32_t currentFrame = 0;
-    long long gameTimeNS = 0, prevTimeNS = 0;
+    double gameTime = 0, rotationTime = 0, prevTime, timeSpeed = 1, rotationSpeed = 1;
+    {
+        struct timespec prevTime0;
+        timespec_get(&prevTime0, TIME_UTC);
+        prevTime = prevTime0.tv_sec + prevTime0.tv_nsec * 1e-9;
+    }
     float aspect = swapchain.extent.width / (float)swapchain.extent.height;
     while (running) {
         while (SDL_PollEvent(&event)) {
@@ -285,6 +290,16 @@ int main(void) {
                 case SDL_SCANCODE_H:
                     timeIncrement = !timeIncrement;
                     printf("timeIncrement: %d\n", timeIncrement);
+                    break;
+                case SDL_SCANCODE_J:
+                    if (event.key.keysym.mod & KMOD_SHIFT) timeSpeed /= 2;
+                    else timeSpeed *= 2;
+                    printf("timeSpeed: %f\n", timeSpeed);
+                    break;
+                case SDL_SCANCODE_K:
+                    if (event.key.keysym.mod & KMOD_SHIFT) rotationSpeed /= 2;
+                    else rotationSpeed *= 2;
+                    printf("rotationSpeed: %f\n", rotationSpeed);
                     break;
                 case SDL_SCANCODE_B:
                     border = !border;
@@ -342,16 +357,19 @@ int main(void) {
             .model = GLM_MAT4_IDENTITY_INIT,
         };
         {
-            long long currentTimeNS;
             struct timespec currentTime0;
-            clock_gettime(CLOCK_MONOTONIC, &currentTime0);
-            currentTimeNS = currentTime0.tv_nsec;
-            if (timeIncrement) gameTimeNS += (currentTimeNS - prevTimeNS);
-            prevTimeNS = currentTimeNS;
-            // printf("gameTimeNS: %llu\tcurrentTimeNS: %llu\n", gameTimeNS, currentTimeNS);
+            timespec_get(&currentTime0, TIME_UTC);
+            double currentTime = currentTime0.tv_sec + currentTime0.tv_nsec * 1e-9;
+
+            if (timeIncrement) {
+                double timeDelta = (currentTime - prevTime) * timeSpeed;
+                gameTime += timeDelta;
+                rotationTime += timeDelta * rotationSpeed;
+            }
+            prevTime = currentTime;
+            // printf("gameTime: %lf\tcurrentTimeNS: %lf\n", gameTime, currentTime);
         }
         vec3 axis = {0, 0, 1}, eye = {2, 2, 2};
-        float rotationTime = gameTimeNS * 1e-9;
         glm_rotate(mvp.model, 2 * GLM_PIf * rotationTime, axis);
         glm_lookat(eye, (vec3){0, 0, 0}, axis, mvp.view);
         glm_perspective(glm_rad(45), aspect, 0.1, 10, mvp.proj);
