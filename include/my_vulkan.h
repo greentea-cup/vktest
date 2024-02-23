@@ -1,67 +1,92 @@
 #ifndef MY_VULKAN_H
 #define MY_VULKAN_H
-#include "SDL.h"
+#include "SDL_vulkan.h"
 #include "vulkan/vulkan.h"
 
-typedef enum {
-    VIS_OK = 0, // Init successful
-    VIS_CANNOT_CREATE_INSTANCE,
-    VIS_CANNOT_CREATE_SURFACE,
-    VIS_BAD_PHYSICAL_DEVICE, // suitable pysical device not found
-    VIS_BAD_QUEUE_FAMILY,    // suitable queue family not found
-    VIS_CANNOT_CREATE_DEVICE,
-    VIS_SURFACE_NOT_SUPPORTED,
-    VIS_CANNOT_CREATE_SWAPCHAIN,
-    VIS_CANNOT_CREATE_RENDER_PASS,
-    VIS_CANNOT_CREATE_FRAMEBUFFER,
-} VulkanInitStatus;
+/*
+ * returns VkInstance on success
+ * NULL on failure
+ */
+VkInstance A_create_instance(SDL_Window *window, uint32_t apiVersion);
 
-char const *VulkanInitStatus_str(VulkanInitStatus status);
+/*
+ */
+VkSurfaceKHR A_create_surface(SDL_Window *window, VkInstance instance);
 
-typedef struct {
-    VkShaderModule shaderModule;
-    VkShaderStageFlagBits shaderStage;
-} VulkanPipelineShaderStage;
+/*
+ * returns provided physical device suitablility score
+ */
+int A_pdevice_score(VkPhysicalDevice pdevice);
 
-typedef struct {
-    VulkanInitStatus status;
-    VkInstance ivk;
-    VkPhysicalDevice pdevice;
+/*
+ * returns best physical device available
+ * if best device is not good enough,
+ * reports with eprintf
+ */
+VkPhysicalDevice A_select_pdevice(VkInstance instance);
+
+typedef struct AQueueFamilies {
+    uint32_t count;
+    int32_t graphicsIndex;
+    int32_t presentIndex;
+} AQueueFamilies;
+
+/*
+ * AQueueFamilies with valid indices on success
+ * .graphicsIndex=-1 if no graphics queue
+ * .presentIndex=-1 if no present queue
+ */
+AQueueFamilies A_select_queue_families(VkPhysicalDevice pdevice, VkSurfaceKHR surface);
+
+typedef struct ADevice {
     VkDevice device;
-    uint32_t graphicsQFI;
-    uint32_t presentQFI;
-    uint32_t graphicsQMode;
     VkQueue drawQueue;
     VkQueue presentQueue;
-    VkSurfaceKHR surface;
-    VkFormat swcImageFormat;
-    VkExtent2D swcExtent;
+} ADevice;
+
+/*
+ * .device=NULL on fail
+ */
+ADevice A_create_device(VkPhysicalDevice pdevice, AQueueFamilies queueFamilies);
+
+VkBool32 A_is_surface_supported(
+    VkPhysicalDevice pdevice, uint32_t graphicsFamilyIndex, VkSurfaceKHR surface);
+
+typedef struct ASwapchain {
     VkSwapchainKHR swapchain;
-    uint32_t swcImageCount;
-    VkImage *swcImages;         // count = swcImageCount
-    VkImageView *swcImageViews; // count = swcImageCount
-    VkRenderPass renderPass;
-    VkFramebuffer *framebuffers; // count = swcImageCount
-    uint32_t maxFrames;
-    VkSemaphore *waitSemaphores;   // count = maxFrames
-    VkSemaphore *signalSemaphores; // count = maxFrames
-    VkFence *frontFences;          // count = maxFrames
-    // VkFence *backFences; // count = swcImageCount
-    VkCommandPool commandPool;
-    VkCommandBuffer *commandBuffers; // count = maxFrames
-    VkViewport viewport;
-    VkRect2D scissor;
-} Vulkan;
+    VkExtent2D extent;
+    VkFormat imageFormat;
+    uint32_t imageCount;
+    VkImage *images;         // count = imageCount
+    VkImageView *imageViews; // count = imageCount
+} ASwapchain;
 
-Vulkan init_vulkan(SDL_Window *window);
+/*
+ */
+ASwapchain A_create_swapchain(
+    VkPhysicalDevice pdevice, VkSurfaceKHR surface, AQueueFamilies queueFamilies, VkDevice device);
 
-void destroy_vulkan(Vulkan *vulkan);
+/*
+ */
+VkImageView *A_create_swapchain_image_views(VkDevice device, ASwapchain swapchain);
 
-void acquire_next_image(Vulkan *vulkan);
+/*
+ */
+VkRenderPass A_create_render_pass(VkDevice device, VkFormat imageFormat);
 
-int recreate_swapchain(Vulkan *vulkan);
+/*
+ */
+VkFramebuffer *A_create_framebuffers(
+    VkDevice device, VkRenderPass renderPass, ASwapchain swapchain);
 
-void reset_command_pool(Vulkan *vulkan);
+typedef struct ARecreatedSwapchain {
+    ASwapchain swapchain;
+    VkFramebuffer *framebuffers; // count = swapchain.imageCount
+} ARecreatedSwapchain;
 
-void update_viewport(Vulkan *vulkan);
+ARecreatedSwapchain A_recreate_swapchain(
+    VkPhysicalDevice pdevice, VkSurfaceKHR surface, AQueueFamilies queueFamilies, VkDevice device,
+    VkRenderPass renderPass, ASwapchain oldSwapchain,
+    VkFramebuffer oldFramebuffers[oldSwapchain.imageCount]);
+
 #endif

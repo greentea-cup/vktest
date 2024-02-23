@@ -1,18 +1,18 @@
 #include "command.h"
 #include "utils.h"
 
-VkCommandPool create_command_pool(VkDevice device, uint32_t graphicsQFI) {
+VkCommandPool A_create_command_pool(VkDevice device, uint32_t graphicsFamilyIndex) {
     VkCommandPoolCreateInfo cpCInfo = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
 
         .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-        .queueFamilyIndex = graphicsQFI};
+        .queueFamilyIndex = graphicsFamilyIndex};
     VkCommandPool commandPool;
     vkCreateCommandPool(device, &cpCInfo, NULL, &commandPool);
     return commandPool;
 }
 
-VkCommandBuffer *create_command_buffers(
+VkCommandBuffer *A_create_command_buffers(
     VkDevice device, VkCommandPool commandPool, uint32_t bufferCount) {
     VkCommandBufferAllocateInfo cbAInfo = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
@@ -69,19 +69,21 @@ int copy_buffer(
 }
 
 void record_command_buffer(
-    Vulkan *vulkan, VkPipeline pipeline, VkPipelineLayout plLayout, uint32_t currentFrame,
-    uint32_t imageIndex, ARecordCmdBuffersParams args) {
+    VkRenderPass renderPass, VkFramebuffer const *framebuffers, VkExtent2D swapchainExtent,
+    VkCommandBuffer const *commandBuffers, VkViewport viewport, VkRect2D scissor,
+    VkPipeline pipeline, VkPipelineLayout plLayout, uint32_t currentFrame, uint32_t imageIndex,
+    ARecordCmdBuffersParams args) {
     VkCommandBufferBeginInfo cbBInfo = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     VkClearValue clearValue = {.color = {.float32 = {.325, .375, .75, 0.}}};
     VkRenderPassBeginInfo rpBInfo = {
         .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-        .renderPass = vulkan->renderPass,
-        .framebuffer = vulkan->framebuffers[imageIndex],
-        .renderArea = (VkRect2D){.offset = {0, 0}, .extent = vulkan->swcExtent},
+        .renderPass = renderPass,
+        .framebuffer = framebuffers[imageIndex],
+        .renderArea = (VkRect2D){.offset = {0, 0}, .extent = swapchainExtent},
         .clearValueCount = 1,
         .pClearValues = &clearValue
     };
-    VkCommandBuffer cmdBuf = vulkan->commandBuffers[currentFrame];
+    VkCommandBuffer cmdBuf = commandBuffers[currentFrame];
     VkResult res = vkBeginCommandBuffer(cmdBuf, &cbBInfo);
     if (res != VK_SUCCESS) {
         eprintf(MSG_ERROR("vkBeginCommandBuffer %d"), res);
@@ -89,8 +91,8 @@ void record_command_buffer(
     }
     vkCmdBeginRenderPass(cmdBuf, &rpBInfo, VK_SUBPASS_CONTENTS_INLINE);
     vkCmdBindPipeline(cmdBuf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-    vkCmdSetViewport(cmdBuf, 0, 1, &vulkan->viewport);
-    vkCmdSetScissor(cmdBuf, 0, 1, &vulkan->scissor);
+    vkCmdSetViewport(cmdBuf, 0, 1, &viewport);
+    vkCmdSetScissor(cmdBuf, 0, 1, &scissor);
     vkCmdBindVertexBuffers(cmdBuf, 0, 1, &args.vBuffer, (VkDeviceSize[]){0});
     vkCmdBindIndexBuffer(cmdBuf, args.iBuffer, 0, VulkanIndexType);
     vkCmdBindDescriptorSets(

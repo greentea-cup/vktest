@@ -3,7 +3,7 @@
 #include "vulkan/vulkan.h"
 #include <stdint.h>
 
-typedef struct {
+typedef struct AShader {
     VkShaderModule module;
     VkShaderStageFlagBits stage;
 } AShader;

@@ -5,7 +5,7 @@
 
 VkDescriptorSetLayout create_descriptor_set_layout(VkDevice device);
 
-typedef struct {
+typedef struct FillBufferParams {
     uint32_t bufferOffset;
     uint32_t dataOffset;
     uint32_t size;

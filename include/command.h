@@ -3,9 +3,9 @@
 #include "my_vulkan.h"
 #include "vulkan/vulkan.h"
 
-VkCommandPool create_command_pool(VkDevice device, uint32_t graphicsQFI);
+VkCommandPool A_create_command_pool(VkDevice device, uint32_t graphicsFamilyIndex);
 
-VkCommandBuffer *create_command_buffers(
+VkCommandBuffer *A_create_command_buffers(
     VkDevice device, VkCommandPool commandPool, uint32_t swcImageCount);
 
 VkCommandBuffer cmd_begin_one_time(VkDevice device, VkCommandPool commandPool);
@@ -13,7 +13,7 @@ VkCommandBuffer cmd_begin_one_time(VkDevice device, VkCommandPool commandPool);
 void cmd_end_one_time(
     VkDevice device, VkCommandPool commandPool, VkQueue drawQueue, VkCommandBuffer cb);
 
-typedef struct {
+typedef struct ACopyBufferParams {
     VkBuffer src;
     VkBuffer dst;
     VkDeviceSize srcOffset;
@@ -27,7 +27,7 @@ typedef struct {
 int copy_buffer(
     VkDevice device, VkCommandPool commandPool, VkQueue drawQueue, ACopyBufferParams args);
 
-typedef struct {
+typedef struct ARecordCmdBuffersParams {
     VkBuffer vBuffer;
     VkBuffer iBuffer;
     uint32_t indexCount;
@@ -36,7 +36,9 @@ typedef struct {
 } ARecordCmdBuffersParams;
 
 void record_command_buffer(
-    Vulkan *vulkan, VkPipeline pipeline, VkPipelineLayout plLayout, uint32_t currentFrame,
-    uint32_t imageIndex, ARecordCmdBuffersParams args);
+    VkRenderPass renderPass, VkFramebuffer const *framebuffers, VkExtent2D swapchainExtent,
+    VkCommandBuffer const *commandBuffers, VkViewport viewport, VkRect2D scissor,
+    VkPipeline pipeline, VkPipelineLayout plLayout, uint32_t currentFrame, uint32_t imageIndex,
+    ARecordCmdBuffersParams args);
 
 #endif

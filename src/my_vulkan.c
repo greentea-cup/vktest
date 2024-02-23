@@ -7,66 +7,55 @@
 #include "sync.h"
 #include "utils.h"
 
-/*
- * 0 on success
- * 1 if cannot create instance
- */
-static int create_vulkan_instance(Vulkan *vulkan, SDL_Window *window) {
-    VkApplicationInfo appInfo = {
-        .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-        .pApplicationName = NULL,
-        .applicationVersion = 0,
-        .pEngineName = NULL,
-        .engineVersion = 0,
-        .apiVersion = VK_API_VERSION_1_0};
-#ifndef NDEBUG
-    // # apt install vulkan-validationlayers
-    char const *ivkLayers[] = {"VK_LAYER_KHRONOS_validation"};
-    uint32_t layerCount = 1;
-    eprintf(MSG_INFO("Running in DEBUG, adding validation layers"));
-#else
-    char const *const *ivkLayers = NULL;
-    uint32_t layerCount = 0;
-#endif
-    uint32_t ivkExtCount;
-    SDL_Vulkan_GetInstanceExtensions(window, &ivkExtCount, NULL);
-    ARR_ALLOC(char const *, ivkExtensions, ivkExtCount);
-    SDL_Vulkan_GetInstanceExtensions(window, &ivkExtCount, ivkExtensions);
-    VkInstanceCreateInfo ivkCInfo = {
+static VkInstance create_vulkan_instance(
+    SDL_Window *window, VkApplicationInfo appInfo, uint32_t layerCount, char const *const *layers) {
+    uint32_t extensionCount;
+    SDL_Vulkan_GetInstanceExtensions(window, &extensionCount, NULL);
+    ARR_ALLOC(char const *, extensions, extensionCount);
+    SDL_Vulkan_GetInstanceExtensions(window, &extensionCount, extensions);
+    VkInstanceCreateInfo instanceInfo = {
         .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pApplicationInfo = &appInfo,
         .enabledLayerCount = layerCount,
-        .ppEnabledLayerNames = ivkLayers,
-        .enabledExtensionCount = ivkExtCount,
-        .ppEnabledExtensionNames = ivkExtensions};
-    VkInstance ivk;
-    VkResult res = vkCreateInstance(&ivkCInfo, NULL, &ivk);
+        .ppEnabledLayerNames = layers,
+        .enabledExtensionCount = extensionCount,
+        .ppEnabledExtensionNames = extensions};
+    VkInstance instance;
+    VkResult res = vkCreateInstance(&instanceInfo, NULL, &instance);
+    free(extensions);
     if (res != VK_SUCCESS) {
         eprintf(MSG_ERROR("cannot create vulkan instance: %d"), res);
-        vulkan->status = VIS_CANNOT_CREATE_INSTANCE;
-        return 1;
+        return NULL;
     }
-    vulkan->ivk = ivk;
-    return 0;
+    return instance;
 }
 
-/*
- * 0 on success
- * 1 if cannot create surface
- */
-static int create_surface(Vulkan *vulkan, SDL_Window *window) {
-    SDL_bool surfaceCreated = SDL_Vulkan_CreateSurface(window, vulkan->ivk, &vulkan->surface);
+VkInstance A_create_instance(SDL_Window *window, uint32_t apiVersion) {
+#ifndef NDEBUG
+    // # apt install vulkan-validationlayers
+    char const *layers[] = {"VK_LAYER_KHRONOS_validation"};
+    uint32_t layerCount = 1;
+    eprintf(MSG_INFO("Running in DEBUG, adding validation layers"));
+#else
+    char const *const *layers = NULL;
+    uint32_t layerCount = 0;
+#endif
+    VkApplicationInfo appInfo = {
+        .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, .apiVersion = apiVersion};
+    return create_vulkan_instance(window, appInfo, layerCount, layers);
+}
+
+VkSurfaceKHR A_create_surface(SDL_Window *window, VkInstance instance) {
+    VkSurfaceKHR surface;
+    SDL_bool surfaceCreated = SDL_Vulkan_CreateSurface(window, instance, &surface);
     if (!surfaceCreated) {
-        vulkan->status = VIS_CANNOT_CREATE_SURFACE;
-        return 1;
+        eprintf(MSG_ERROR("cannot create surface"));
+        return NULL;
     }
-    return 0;
+    return surface;
 }
 
-/*
- * returns provided physical device suitablility score
- */
-static int calculate_physical_device_suitability(VkPhysicalDevice pdevice) {
+int A_pdevice_score(VkPhysicalDevice pdevice) {
     VkPhysicalDeviceProperties props;
     VkPhysicalDeviceFeatures features;
     vkGetPhysicalDeviceProperties(pdevice, &props);
@@ -85,47 +74,37 @@ static int calculate_physical_device_suitability(VkPhysicalDevice pdevice) {
     return score;
 }
 
-/*
- * 0 on success
- * 0 if best device is bad, status flag is set
- * to VIS_BAD_PHYSICAL_DEVICE
- */
-static int select_physical_device(Vulkan *vulkan) {
-    uint32_t pDevCount;
-    vkEnumeratePhysicalDevices(vulkan->ivk, &pDevCount, NULL);
-    ARR_ALLOC(VkPhysicalDevice, devices, pDevCount);
-    vkEnumeratePhysicalDevices(vulkan->ivk, &pDevCount, devices);
+VkPhysicalDevice A_select_pdevice(VkInstance instance) {
+    uint32_t pdeviceCount;
+    vkEnumeratePhysicalDevices(instance, &pdeviceCount, NULL);
+    ARR_ALLOC(VkPhysicalDevice, pdevices, pdeviceCount);
+    vkEnumeratePhysicalDevices(instance, &pdeviceCount, pdevices);
     uint32_t bestDeviceIndex = 0;
     int bestDeviceScore = 0;
-    for (uint32_t i = 0; i < pDevCount; i++) {
-        int thisScore = calculate_physical_device_suitability(devices[i]);
+    for (uint32_t i = 0; i < pdeviceCount; i++) {
+        int thisScore = A_pdevice_score(pdevices[i]);
         if (thisScore > bestDeviceScore) {
             bestDeviceScore = thisScore;
             bestDeviceIndex = i;
         }
     }
-    if (bestDeviceScore == 0) {
-        eprintf(
-            MSG_ERROR("Environment doesn't meet minimum requirements. Stability not guaranteed."));
-        // do not return error; maybe it still works
-        vulkan->status = VIS_BAD_PHYSICAL_DEVICE;
-    }
-    vulkan->pdevice = devices[bestDeviceIndex];
-    free(devices);
-    return 0;
+    VkPhysicalDevice pdevice = pdevices[bestDeviceIndex];
+    free(pdevices);
+#ifndef A_NO_COMPAT_WARN
+    if (bestDeviceScore == 0)
+        eprintf(MSG_WARN("Environment doesn't meet minimum requirements. "
+                         "Stability not guaranteed.\n"
+                         "To disable this warning, define "
+                         "A_NO_COMPAT_WARN before compilation"));
+#endif
+    return pdevice;
 }
 
-/*
- * 0 on success
- * 1 if bad queue family, status flag is set
- * to VIS_BAD_QUEUE_FAMILY
- */
-static int select_queue_families(Vulkan *vulkan, uint32_t *out_qFamCount) {
+AQueueFamilies A_select_queue_families(VkPhysicalDevice pdevice, VkSurfaceKHR surface) {
     uint32_t qFamCount;
-    vkGetPhysicalDeviceQueueFamilyProperties(
-        vulkan->pdevice, &qFamCount, NULL); // get array size into qFamCount
+    vkGetPhysicalDeviceQueueFamilyProperties(pdevice, &qFamCount, NULL);
     ARR_ALLOC(VkQueueFamilyProperties, qFamProps, qFamCount);
-    vkGetPhysicalDeviceQueueFamilyProperties(vulkan->pdevice, &qFamCount, qFamProps);
+    vkGetPhysicalDeviceQueueFamilyProperties(pdevice, &qFamCount, qFamProps);
     // find graphics family
     int32_t gIdx = -1, pIdx = -1;
     for (uint32_t i = 0; i < qFamCount; i++) {
@@ -135,86 +114,65 @@ static int select_queue_families(Vulkan *vulkan, uint32_t *out_qFamCount) {
             if (gIdx == -1 || qFamProps[gIdx].queueCount < qFam.queueCount) gIdx = i;
         }
         VkBool32 presentSupport = 0;
-        vkGetPhysicalDeviceSurfaceSupportKHR(vulkan->pdevice, i, vulkan->surface, &presentSupport);
+        vkGetPhysicalDeviceSurfaceSupportKHR(pdevice, i, surface, &presentSupport);
         if (presentSupport) pIdx = i;
         if (gIdx != -1 && pIdx != -1) break;
     }
     free(qFamProps);
-    if (gIdx == -1 || pIdx == -1) {
-        eprintf(MSG_ERROR("cannot find suitable queue families"));
-        vulkan->status = VIS_BAD_QUEUE_FAMILY;
-        return 1;
-    }
-    *out_qFamCount = qFamCount;
-    vulkan->graphicsQFI = gIdx;
-    vulkan->presentQFI = pIdx;
-    return 0;
+    if (gIdx == -1 || pIdx == -1) { eprintff(MSG_ERRORF("cannot find suitable queue families")); }
+    return (AQueueFamilies){.count = qFamCount, .graphicsIndex = gIdx, .presentIndex = pIdx};
 }
 
-/*
- * 0 on success
- * 1 if cannot create device, status flag is set
- * to VIS_CANNOT_CREATE_DEVICE
- */
-static int create_device(Vulkan *vulkan) {
-    uint32_t qFamCount;
-    if (select_queue_families(vulkan, &qFamCount)) {
-        eprintf(MSG_ERROR("create_device failed: select_queue_families failed"));
-        return 1;
-    }
+ADevice A_create_device(VkPhysicalDevice pdevice, AQueueFamilies queueFamilies) {
     // device queue create info && queue priorities
-    ARR_ALLOC(VkDeviceQueueCreateInfo, devQCInfo, qFamCount);
-    float qPriority = 1.0f;
-    for (uint32_t i = 0; i < qFamCount; i++) {
-        devQCInfo[i] = (VkDeviceQueueCreateInfo){
+    ARR_ALLOC(VkDeviceQueueCreateInfo, deviceQueueInfos, queueFamilies.count);
+    float priority = 1.0f;
+    for (uint32_t i = 0; i < queueFamilies.count; i++) {
+        deviceQueueInfos[i] = (VkDeviceQueueCreateInfo){
             .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
             .queueFamilyIndex = i,
             .queueCount = 1,
-            .pQueuePriorities = &qPriority};
+            .pQueuePriorities = &priority};
     }
 
     // physical device extensions
     char const *extensions[VK_MAX_EXTENSION_NAME_SIZE] = {"VK_KHR_swapchain"};
     uint32_t extensionCount = 1;
     VkPhysicalDeviceFeatures features;
-    vkGetPhysicalDeviceFeatures(vulkan->pdevice, &features);
+    vkGetPhysicalDeviceFeatures(pdevice, &features);
     features.samplerAnisotropy = VK_TRUE;
 
-    VkDeviceCreateInfo devCInfo = {
+    VkDeviceCreateInfo deviceInfo = {
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-        .queueCreateInfoCount = qFamCount,
-        .pQueueCreateInfos = devQCInfo,
+        .queueCreateInfoCount = queueFamilies.count,
+        .pQueueCreateInfos = deviceQueueInfos,
         .enabledExtensionCount = extensionCount,
         .ppEnabledExtensionNames = extensions,
         .pEnabledFeatures = &features};
-    VkResult res = vkCreateDevice(vulkan->pdevice, &devCInfo, NULL, &vulkan->device);
+    VkDevice device;
+    VkResult res = vkCreateDevice(pdevice, &deviceInfo, NULL, &device);
     // cleanup
-    free(devQCInfo);
+    free(deviceQueueInfos);
     if (res != VK_SUCCESS) {
-        eprintf("device creation failed");
-        vulkan->status = VIS_CANNOT_CREATE_DEVICE;
-        return 1;
+        eprintff(MSG_ERRORF("device creation failed: %d"), res);
+        goto no_device;
     }
     // get queues
-    vkGetDeviceQueue(vulkan->device, vulkan->graphicsQFI, 0, &vulkan->drawQueue);
-    vkGetDeviceQueue(vulkan->device, vulkan->presentQFI, 0, &vulkan->presentQueue);
-    return 0;
+    VkQueue drawQueue, presentQueue;
+    vkGetDeviceQueue(device, queueFamilies.graphicsIndex, 0, &drawQueue);
+    vkGetDeviceQueue(device, queueFamilies.presentIndex, 0, &presentQueue);
+
+    return (ADevice){.device = device, .drawQueue = drawQueue, .presentQueue = presentQueue};
+no_device:
+    return (ADevice){.device = NULL};
 }
 
-/*
- * 0 on success
- * 1 if surface is not supported, status flag is set
- * to VIS_SURFACE_NOT_SUPPORTED
- */
-static int check_surface_support(Vulkan *vulkan) {
+VkBool32 A_is_surface_supported(
+    VkPhysicalDevice pdevice, uint32_t graphicsFamilyIndex, VkSurfaceKHR surface) {
     VkBool32 isSurfaceSupported;
     vkGetPhysicalDeviceSurfaceSupportKHR(
-        vulkan->pdevice, vulkan->graphicsQFI, vulkan->surface, &isSurfaceSupported);
-    if (!isSurfaceSupported) {
-        vulkan->status = VIS_SURFACE_NOT_SUPPORTED;
-        return 1;
-    }
-    return 0;
+        pdevice, graphicsFamilyIndex, surface, &isSurfaceSupported);
+    return isSurfaceSupported;
 }
 
 static VkSurfaceFormatKHR get_surface_format(VkPhysicalDevice pdevice, VkSurfaceKHR surface) {
@@ -222,7 +180,7 @@ static VkSurfaceFormatKHR get_surface_format(VkPhysicalDevice pdevice, VkSurface
     vkGetPhysicalDeviceSurfaceFormatsKHR(pdevice, surface, &surfFmtCount, NULL);
     ARR_ALLOC(VkSurfaceFormatKHR, surfFormats, surfFmtCount);
     vkGetPhysicalDeviceSurfaceFormatsKHR(pdevice, surface, &surfFmtCount, surfFormats);
-    VkSurfaceFormatKHR surfFormat = surfFormats[0]; //
+    VkSurfaceFormatKHR surfFormat = surfFormats[0]; // best compatible
     free(surfFormats);
     return surfFormat;
 }
@@ -243,42 +201,41 @@ static VkPresentModeKHR get_present_mode(VkPhysicalDevice pdevice, VkSurfaceKHR 
     return thePresentMode;
 }
 
-/*
- * 0 on success
- * 1 if cannot create swapchain, status flag is set
- * to VIS_CANNOT_CREATE_SWAPCHAIN
- */
-static int create_swapchain(Vulkan *vulkan) {
+ASwapchain A_create_swapchain(
+    VkPhysicalDevice pdevice, VkSurfaceKHR surface, AQueueFamilies queueFamilies, VkDevice device) {
     VkSurfaceCapabilitiesKHR surfCaps;
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vulkan->pdevice, vulkan->surface, &surfCaps);
-    VkSurfaceFormatKHR surfFormat = get_surface_format(vulkan->pdevice, vulkan->surface);
-    VkPresentModeKHR presentMode = get_present_mode(vulkan->pdevice, vulkan->surface);
-    // swapchain extent
-    vulkan->swcExtent = surfCaps.currentExtent;
-    // create swapchain
-    VkSharingMode imageShareMode = VK_SHARING_MODE_EXCLUSIVE;
-    uint32_t qFamIdxCount = 0;
-    uint32_t const *qFamIndices = NULL;
-    uint32_t const qfids[] = {vulkan->graphicsQFI, vulkan->presentQFI};
-    if (qfids[0] != qfids[1]) { // different graphics and present queues
-        imageShareMode = VK_SHARING_MODE_CONCURRENT;
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(pdevice, surface, &surfCaps);
+    VkSurfaceFormatKHR surfFormat = get_surface_format(pdevice, surface);
+    VkPresentModeKHR presentMode = get_present_mode(pdevice, surface);
+    VkExtent2D swapchainExtent = surfCaps.currentExtent;
+    VkSharingMode imageSharingMode;
+    uint32_t qFamIdxCount;
+    uint32_t const *qFamIndices;
+    uint32_t const qfids[] = {queueFamilies.graphicsIndex, queueFamilies.presentIndex};
+    if (qfids[0] == qfids[1]) {
+        imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        qFamIdxCount = 0;
+        qFamIndices = NULL;
+    }
+    else {
+        imageSharingMode = VK_SHARING_MODE_CONCURRENT;
         qFamIdxCount = 2;
         qFamIndices = qfids;
     }
-    uint32_t imageCount = surfCaps.minImageCount + 1;
-    uint32_t maxImageCount = surfCaps.maxImageCount;
+    uint32_t imageCount = surfCaps.minImageCount + 1, maxImageCount = surfCaps.maxImageCount;
     if (maxImageCount != 0 && imageCount > maxImageCount) imageCount = maxImageCount;
-    VkSwapchainCreateInfoKHR swcCInfo = {
+    VkFormat swapchainImageFormat = surfFormat.format;
+    VkSwapchainCreateInfoKHR swapchainInfo = {
         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-        .surface = vulkan->surface,
+        .surface = surface,
         .minImageCount = surfCaps.minImageCount + 1,
-        .imageFormat = surfFormat.format,
+        .imageFormat = swapchainImageFormat,
         .imageColorSpace = surfFormat.colorSpace,
-        .imageExtent = vulkan->swcExtent,
-        .imageArrayLayers = 1, // see VkSwapchainCreateInfoKHR Khronos registry
+        .imageExtent = swapchainExtent,
+        .imageArrayLayers = 1,
         .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, // VK_IMAGE_USAGE_TRANSFER_DST_BIT when
                                                            // get to post-processing
-        .imageSharingMode = imageShareMode,
+        .imageSharingMode = imageSharingMode,
         .queueFamilyIndexCount = qFamIdxCount,
         .pQueueFamilyIndices = qFamIndices,
         .preTransform = surfCaps.currentTransform,
@@ -286,47 +243,70 @@ static int create_swapchain(Vulkan *vulkan) {
         .presentMode = presentMode,
         .clipped = VK_TRUE,
         .oldSwapchain = NULL};
-    VkResult res = vkCreateSwapchainKHR(vulkan->device, &swcCInfo, NULL, &vulkan->swapchain);
+    VkSwapchainKHR swapchain;
+    VkResult res = vkCreateSwapchainKHR(device, &swapchainInfo, NULL, &swapchain);
     if (res != VK_SUCCESS) {
         eprintf(MSG_ERROR("cannot create swapchain: %d"), res);
-        vulkan->status = VIS_CANNOT_CREATE_SWAPCHAIN;
-        return 1;
+        goto no_swapchain;
     }
-    vkGetSwapchainImagesKHR(vulkan->device, vulkan->swapchain, &vulkan->swcImageCount, NULL);
-    vulkan->swcImages = ARR_INPLACE_ALLOC(VkImage, vulkan->swcImageCount);
-    vkGetSwapchainImagesKHR(
-        vulkan->device, vulkan->swapchain, &vulkan->swcImageCount, vulkan->swcImages);
-
-    vulkan->swcImageFormat = surfFormat.format;
-    return 0;
-}
-
-/*
- * 0 on success
- * 1 if cannot create image view
- */
-static int create_image_views(Vulkan *vulkan) {
-    vulkan->swcImageViews = ARR_INPLACE_ALLOC(VkImageView, vulkan->swcImageCount);
-    for (uint32_t i = 0; i < vulkan->swcImageCount; i++) {
-        VkImageView swcImageView =
-            create_image_view(vulkan->device, vulkan->swcImages[i], vulkan->swcImageFormat);
-        if (swcImageView == NULL) {
-            eprintf(MSG_ERROR("failed create image view"));
-            return 1;
+    uint32_t swapchainImageCount;
+    vkGetSwapchainImagesKHR(device, swapchain, &swapchainImageCount, NULL);
+    ARR_ALLOC(VkImage, swapchainImages, swapchainImageCount);
+    vkGetSwapchainImagesKHR(device, swapchain, &swapchainImageCount, swapchainImages);
+    ARR_ALLOC(VkImageView, swapchainImageViews, swapchainImageCount);
+    uint32_t imageViewSuccessful;
+    for (uint32_t i = 0; i < swapchainImageCount; i++) {
+        VkImageView imageView = create_image_view(device, swapchainImages[i], swapchainImageFormat);
+        if (imageView == NULL) {
+            eprintf(MSG_ERROR("failed to create image view"));
+            imageViewSuccessful = i; // excluding this
+            goto no_image_view;
         }
-        vulkan->swcImageViews[i] = swcImageView;
+        swapchainImageViews[i] = imageView;
     }
-    return 0;
+    return (ASwapchain){
+        .swapchain = swapchain,
+        .extent = swapchainExtent,
+        .imageFormat = swapchainImageFormat,
+        .imageCount = swapchainImageCount,
+        .images = swapchainImages,
+        .imageViews = swapchainImageViews};
+no_image_view:
+    for (uint32_t i = 0; i < imageViewSuccessful; i++) {
+        vkDestroyImageView(device, swapchainImageViews[i], NULL);
+    }
+    free(swapchainImageViews);
+    free(swapchainImages);
+    vkDestroySwapchainKHR(device, swapchain, NULL);
+no_swapchain:
+    return (ASwapchain){.swapchain = NULL};
 }
 
-/*
- * 0 on success
- * 1 if cannot create render pass, status flag is set
- * to VIS_CANNOT_CREATE_RENDER_PASS
- */
-static int create_render_pass(Vulkan *vulkan) {
+VkImageView *A_create_swapchain_image_views(VkDevice device, ASwapchain swapchain) {
+    ARR_ALLOC(VkImageView, swapchainImageViews, swapchain.imageCount);
+    uint32_t imageViewSuccessful;
+    for (uint32_t i = 0; i < swapchain.imageCount; i++) {
+        VkImageView imageView =
+            create_image_view(device, swapchain.images[i], swapchain.imageFormat);
+        if (imageView == NULL) {
+            eprintf(MSG_ERROR("failed to create image view"));
+            imageViewSuccessful = i; // excluding this
+            goto image_view_failed;
+        }
+        swapchainImageViews[i] = imageView;
+    }
+    return swapchainImageViews;
+image_view_failed:
+    for (uint32_t i = 0; i < imageViewSuccessful; i++) {
+        vkDestroyImageView(device, swapchainImageViews[i], NULL);
+    }
+    free(swapchainImageViews);
+    return NULL;
+}
+
+VkRenderPass A_create_render_pass(VkDevice device, VkFormat imageFormat) {
     VkAttachmentDescription attachDesc = {
-        .format = vulkan->swcImageFormat,
+        .format = imageFormat,
         .samples = VK_SAMPLE_COUNT_1_BIT,
         .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
         .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
@@ -365,77 +345,61 @@ static int create_render_pass(Vulkan *vulkan) {
         .pSubpasses = &subpassDesc,
         .dependencyCount = 1,
         .pDependencies = &subpassDep};
-
-    VkResult res = vkCreateRenderPass(vulkan->device, &renderPassInfo, NULL, &vulkan->renderPass);
+    VkRenderPass renderPass;
+    VkResult res = vkCreateRenderPass(device, &renderPassInfo, NULL, &renderPass);
     if (res != VK_SUCCESS) {
-        eprintf(MSG_ERROR("cannot create render pass: %d"), res);
-        vulkan->status = VIS_CANNOT_CREATE_RENDER_PASS;
-        return 1;
+        eprintff(MSG_ERRORF("cannot create render pass: %d"), res);
+        return NULL;
     }
-    return 0;
+    return renderPass;
+}
+
+VkFramebuffer *A_create_framebuffers(
+    VkDevice device, VkRenderPass renderPass, ASwapchain swapchain) {
+    VkFramebufferCreateInfo framebufferInfo = {
+        .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+        .renderPass = renderPass,
+        .attachmentCount = 1,
+        .pAttachments = NULL,
+        .width = swapchain.extent.width,
+        .height = swapchain.extent.height,
+        .layers = 1};
+    ARR_ALLOC(VkFramebuffer, framebuffers, swapchain.imageCount);
+    uint32_t successful;
+    for (uint32_t i = 0; i < swapchain.imageCount; i++) {
+        framebufferInfo.pAttachments = swapchain.imageViews + i;
+        VkResult res = vkCreateFramebuffer(device, &framebufferInfo, NULL, framebuffers + i);
+        if (res != VK_SUCCESS) {
+            eprintf("cannot create framebuffer #%d: %d", i, res);
+            successful = i;
+            goto partial_framebuffers;
+        }
+    }
+    return framebuffers;
+partial_framebuffers:
+    for (uint32_t i = 0; i < successful; i++) {
+        vkDestroyFramebuffer(device, framebuffers[i], NULL);
+    }
+    free(framebuffers);
+    return NULL;
 }
 
 /*
- * 0 on success
- * 1 if cannot create framebuffer, status flag is set
- * to VIS_CANNOT_CREATE_FRAMEBUFFER
- */
-static int create_framebuffers(Vulkan *vulkan) {
-    VkFramebufferCreateInfo fbCInfo = {
-        .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-        .renderPass = vulkan->renderPass,
-        .attachmentCount = 1,
-        .pAttachments = NULL,
-        .width = vulkan->swcExtent.width,
-        .height = vulkan->swcExtent.height,
-        .layers = 1};
-    vulkan->framebuffers = ARR_INPLACE_ALLOC(VkFramebuffer, vulkan->swcImageCount);
-    for (uint32_t i = 0; i < vulkan->swcImageCount; i++) {
-        fbCInfo.pAttachments = vulkan->swcImageViews + i;
-        VkResult res =
-            vkCreateFramebuffer(vulkan->device, &fbCInfo, NULL, vulkan->framebuffers + i);
-        if (res != VK_SUCCESS) {
-            eprintf("cannot create framebuffer #%d: %d", i, res);
-            vulkan->status = VIS_CANNOT_CREATE_FRAMEBUFFER;
-            return 1;
-        }
+void init_vulkan(SDL_Window *window, uint32_t apiVersion) {
+    VkInstance instance = A_create_instance(window, apiVersion);
+    VkSurfaceKHR surface = A_create_surface(window, instance);
+    VkPhysicalDevice pdevice = A_select_pdevice(instance);
+    AQueueFamilies queueFamilies = A_select_queue_families(pdevice, surface);
+    if (queueFamilies.graphicsIndex == -1 || queueFamilies.presentIndex == -1) {
+        eprintff(MSG_ERRORF("no queue families"));
     }
-    return 0;
-}
-
-char const *VulkanInitStatus_str(VulkanInitStatus status) {
-    // idk why clang-format does this
-#define CASE_TO_STR(x)                                                                             \
-    case x: return #x;
-    switch (status) {
-        CASE_TO_STR(VIS_OK);
-        CASE_TO_STR(VIS_CANNOT_CREATE_INSTANCE);
-        CASE_TO_STR(VIS_CANNOT_CREATE_SURFACE);
-        CASE_TO_STR(VIS_BAD_PHYSICAL_DEVICE);
-        CASE_TO_STR(VIS_BAD_QUEUE_FAMILY);
-        CASE_TO_STR(VIS_CANNOT_CREATE_DEVICE);
-        CASE_TO_STR(VIS_SURFACE_NOT_SUPPORTED);
-        CASE_TO_STR(VIS_CANNOT_CREATE_SWAPCHAIN);
-        CASE_TO_STR(VIS_CANNOT_CREATE_RENDER_PASS);
-        CASE_TO_STR(VIS_CANNOT_CREATE_FRAMEBUFFER);
-    default: return "<VIS_UNKNOWN>";
-    }
-
-#undef CASE_TO_STR
-}
-
-Vulkan init_vulkan(SDL_Window *window) {
-    Vulkan vulkan = {0};
-    vulkan.status = VIS_OK;
-    vulkan.maxFrames = 2;
-    if (create_vulkan_instance(&vulkan, window)) goto error;
-    if (create_surface(&vulkan, window)) goto error;
-    if (select_physical_device(&vulkan)) goto error;
-    if (create_device(&vulkan)) goto error;
-    if (check_surface_support(&vulkan)) goto error;
-    if (create_swapchain(&vulkan)) goto error;
-    if (create_image_views(&vulkan)) goto error;
-    if (create_render_pass(&vulkan)) goto error;
+    ADevice device = A_create_device(pdevice, queueFamilies);
+    VkBool32 isSurfaceSupported;
+    vkGetPhysicalDeviceSurfaceSupportKHR(
+        pdevice, queueFamilies.graphicsIndex, surface, &isSurfaceSupported);
+    if (!isSurfaceSupported) {}
+    ASwapchain swapchain = A_create_swapchain(pdevice, surface, queueFamilies, device);
+    VkRenderPass renderPass = A_create_render_pass(device.device, swapchain.imageFormat);
     // descriptor set layout
     // graphics pipeline
     if (create_framebuffers(&vulkan)) goto error;
@@ -460,18 +424,9 @@ error:
     destroy_vulkan(&vulkan);
     return vulkan;
 }
+*/
 
-static void cleanup_swapchain(Vulkan *vulkan) {
-    for (uint32_t i = 0; i < vulkan->swcImageCount; i++)
-        vkDestroyFramebuffer(vulkan->device, vulkan->framebuffers[i], NULL);
-    for (uint32_t i = 0; i < vulkan->swcImageCount; i++)
-        vkDestroyImageView(vulkan->device, vulkan->swcImageViews[i], NULL);
-    vkDestroySwapchainKHR(vulkan->device, vulkan->swapchain, NULL);
-    free(vulkan->framebuffers);
-    free(vulkan->swcImageViews);
-    free(vulkan->swcImages);
-}
-
+/*
 void destroy_vulkan(Vulkan *vulkan) {
     if (vulkan->device == NULL) goto nodevice;
     for (uint32_t i = 0; i < vulkan->maxFrames; i++) {
@@ -496,29 +451,30 @@ nodevice:
     free(vulkan->commandBuffers);
     if (vulkan->surface != NULL) vkDestroySurfaceKHR(vulkan->ivk, vulkan->surface, NULL);
     vkDestroyInstance(vulkan->ivk, NULL);
+}*/
+
+void ASwapchain_destroy(VkDevice device, ASwapchain swapchain) {
+    // images from vkGetSwapchainImagesKHR
+    // should not be destroyed by vkDestroyImage
+    for (uint32_t i = 0; i < swapchain.imageCount; i++) {
+        vkDestroyImageView(device, swapchain.imageViews[i], NULL);
+    }
+    vkDestroySwapchainKHR(device, swapchain.swapchain, NULL);
+    free(swapchain.imageViews);
+    free(swapchain.images);
 }
 
-/*
- * 0 on success
- * 1 if cannot recreate swapchain
- */
-int recreate_swapchain(Vulkan *vulkan) {
-    vkDeviceWaitIdle(vulkan->device);
-    cleanup_swapchain(vulkan);
-    if (create_swapchain(vulkan)) goto error;
-    if (create_image_views(vulkan)) goto error;
-    if (create_framebuffers(vulkan)) goto error;
-    return 0;
-error:
-    eprintf(MSG_ERROR("cannot recreate swapchain"));
-    return 1;
-}
-
-void reset_command_pool(Vulkan *vulkan) {
-    vkResetCommandPool(vulkan->device, vulkan->commandPool, 0);
-}
-
-void update_viewport(Vulkan *vulkan) {
-    vulkan->viewport = make_viewport(vulkan->swcExtent);
-    vulkan->scissor = make_scissor(vulkan->swcExtent, 0, 0, 0, 0);
+ARecreatedSwapchain A_recreate_swapchain(
+    VkPhysicalDevice pdevice, VkSurfaceKHR surface, AQueueFamilies queueFamilies, VkDevice device,
+    VkRenderPass renderPass, ASwapchain oldSwapchain,
+    VkFramebuffer oldFramebuffers[oldSwapchain.imageCount]) {
+    vkDeviceWaitIdle(device);
+    for (uint32_t i = 0; i < oldSwapchain.imageCount; i++) {
+        vkDestroyFramebuffer(device, oldFramebuffers[i], NULL);
+    }
+    ASwapchain_destroy(device, oldSwapchain);
+    ASwapchain newSwapchain = A_create_swapchain(pdevice, surface, queueFamilies, device);
+    VkFramebuffer *newFramebuffers = A_create_framebuffers(device, renderPass, newSwapchain);
+    return (ARecreatedSwapchain){.swapchain = newSwapchain, .framebuffers = newFramebuffers};
+    // TODO: errors
 }

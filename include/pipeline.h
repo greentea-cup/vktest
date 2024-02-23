@@ -3,7 +3,7 @@
 #include "shader.h"
 #include "vulkan/vulkan.h"
 
-typedef struct {
+typedef struct APipelineParams {
     uint32_t bindingCount;
     VkVertexInputBindingDescription *bindings;
     uint32_t attributeCount;

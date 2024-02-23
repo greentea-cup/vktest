@@ -6,6 +6,7 @@
 #include "my_vulkan.h"
 #include "pipeline.h"
 #include "shader.h"
+#include "sync.h"
 #include "utils.h"
 #include "vertex.h"
 #include "vulkan/vulkan.h"
@@ -21,52 +22,48 @@ int main(void) {
         "vktest", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 800, 600,
         SDL_WINDOW_VULKAN | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
 
-    Vulkan vulkan = init_vulkan(window);
-    if (vulkan.status != VIS_OK) goto vulkan_init_error;
-    eprintf(MSG_INFO("Vulkan initialized successfully"));
-
+    // init vulkan
+    uint32_t maxFrames = 2;
+    VkInstance instance = A_create_instance(window, VK_API_VERSION_1_0);
+    VkSurfaceKHR surface = A_create_surface(window, instance);
+    VkPhysicalDevice pdevice = A_select_pdevice(instance);
+    AQueueFamilies queueFamilies = A_select_queue_families(pdevice, surface);
+    if (queueFamilies.graphicsIndex == -1 || queueFamilies.presentIndex == -1) {
+        // goto no_queue_families;
+        exit(1);
+    }
+    ADevice adevice = A_create_device(pdevice, queueFamilies);
+    VkDevice device = adevice.device;
+    if (!A_is_surface_supported(pdevice, queueFamilies.graphicsIndex, surface)) {}
+    ASwapchain swapchain = A_create_swapchain(pdevice, surface, queueFamilies, device);
+    VkRenderPass renderPass = A_create_render_pass(device, swapchain.imageFormat);
+    // descriptor set layout
+    VkDescriptorSetLayout descriptorSetLayout = create_descriptor_set_layout(device);
+    // graphics pipeline
 // shaders
 #define SHADER_PATH_PREFIX "./data/shaders_compiled/"
 #define SHADER_PATH(x) SHADER_PATH_PREFIX x
     char const *vertShaderPath = SHADER_PATH("main.vert.spv");
     char const *fragShaderPath = SHADER_PATH("main.frag.spv");
-    AShader vertShader =
-        AShader_from_path(vulkan.device, vertShaderPath, VK_SHADER_STAGE_VERTEX_BIT);
-    AShader fragShader =
-        AShader_from_path(vulkan.device, fragShaderPath, VK_SHADER_STAGE_FRAGMENT_BIT);
+    AShader vertShader = AShader_from_path(device, vertShaderPath, VK_SHADER_STAGE_VERTEX_BIT);
+    AShader fragShader = AShader_from_path(device, fragShaderPath, VK_SHADER_STAGE_FRAGMENT_BIT);
     if (vertShader.module == NULL || fragShader.module == NULL) { goto shader_load_error; }
     eprintf(MSG_INFO("Shaders loaded successfully"));
-    VkDescriptorSetLayout descriptorSetLayout = create_descriptor_set_layout(vulkan.device);
-    VkPipelineLayout plLayout =
-        create_pipeline_layout(vulkan.device, 1, &descriptorSetLayout, 0, NULL);
+    VkPipelineLayout plLayout = create_pipeline_layout(device, 1, &descriptorSetLayout, 0, NULL);
     uint32_t uBufBinding = 0, samplerBinding = 1; // binding index for uniform buffers in shaders
     APipelineParams plArgs = APipeline_default(uBufBinding);
     VkPipeline graphicsPipeline = create_pipeline(
-        vulkan.device, plLayout, vulkan.renderPass, "main", 2, (AShader[]){vertShader, fragShader},
-        plArgs);
+        device, plLayout, renderPass, "main", 2, (AShader[]){vertShader, fragShader}, plArgs);
     // destroy excess
-    AShader_destroy(vulkan.device, vertShader);
-    AShader_destroy(vulkan.device, fragShader);
+    AShader_destroy(device, vertShader);
+    AShader_destroy(device, fragShader);
     APipelineParams_free(plArgs);
-    VkDeviceMemory textureImageMemory;
-    VkImage textureImage = create_texture_image(
-        vulkan.device, vulkan.pdevice, "data/textures/256/test2.png", vulkan.commandPool,
-        vulkan.drawQueue, &textureImageMemory);
-    if (textureImage == NULL) {
-        eprintf(MSG_ERROR("cannot create image"));
-        goto no_texture_image;
-    }
-    VkImageView textureImageView = create_texture_image_view(vulkan.device, textureImage);
-    if (textureImageView == NULL) {
-        eprintf(MSG_ERROR("failed to create image view"));
-        goto no_texture_image_view;
-    }
-    VkSampler textureSampler = create_sampler(vulkan.device);
-    if (textureSampler == NULL) {
-        eprintf(MSG_ERROR("failed to create texture sampler"));
-        goto no_texture_sampler;
-    }
 
+    //
+    VkFramebuffer *framebuffers = A_create_framebuffers(device, renderPass, swapchain);
+    VkCommandPool commandPool = A_create_command_pool(device, queueFamilies.graphicsIndex);
+    // create buffers
+    // data
     struct MVP {
         mat4 model;
         mat4 view;
@@ -99,51 +96,73 @@ int main(void) {
     uint32_t presetLength = ARR_LEN(offsets);
     uint32_t bufferSize = sizeof(vertexData); // sizeof(*vertexData) * vertexCount;
     uint32_t indexSize = sizeof(indices);
-    // uint32_t vertexCount = indexSize / sizeof(*indices);
-    // create buffers
+    //
     VkBuffer svBuffer, vBuffer, siBuffer, iBuffer, *uBuffers;
     VkDeviceMemory svBufMem, vBufMem, siBufMem, iBufMem, *uBufsMem;
     void **uBufsMapped;
     VkDeviceSize uBufSize = sizeof(struct MVP);
-    svBuffer = create_staging_buffer(vulkan.device, vulkan.pdevice, bufferSize, &svBufMem);
-    vBuffer = create_vertex_buffer(vulkan.device, vulkan.pdevice, bufferSize, &vBufMem);
-    siBuffer = create_staging_buffer(vulkan.device, vulkan.pdevice, indexSize, &siBufMem);
-    iBuffer = create_index_buffer(vulkan.device, vulkan.pdevice, indexSize, &iBufMem);
-    uBuffers = create_uniform_buffers(
-        vulkan.device, vulkan.pdevice, vulkan.maxFrames, uBufSize, &uBufsMem, &uBufsMapped);
+    // vertex buffer
+    svBuffer = create_staging_buffer(device, pdevice, bufferSize, &svBufMem);
+    vBuffer = create_vertex_buffer(device, pdevice, bufferSize, &vBufMem);
+    // index buffer
+    siBuffer = create_staging_buffer(device, pdevice, indexSize, &siBufMem);
+    iBuffer = create_index_buffer(device, pdevice, indexSize, &iBufMem);
+    // uniform buffers
+    uBuffers =
+        create_uniform_buffers(device, pdevice, maxFrames, uBufSize, &uBufsMem, &uBufsMapped);
     // end create buffers
-    // create descriptor pool
+
+    // descriptor pool
     VkDescriptorPoolSize poolSizes[] = {
-        {.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         .descriptorCount = vulkan.maxFrames},
-        {.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount = vulkan.maxFrames}
+        {.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         .descriptorCount = maxFrames},
+        {.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount = maxFrames}
     };
     VkDescriptorPoolCreateInfo poolInfo = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .poolSizeCount = ARR_LEN(poolSizes),
         .pPoolSizes = poolSizes,
-        .maxSets = vulkan.maxFrames};
+        .maxSets = maxFrames};
     VkDescriptorPool descriptorPool;
-    if (vkCreateDescriptorPool(vulkan.device, &poolInfo, NULL, &descriptorPool) != VK_SUCCESS) {
+    if (vkCreateDescriptorPool(device, &poolInfo, NULL, &descriptorPool) != VK_SUCCESS) {
         eprintf(MSG_ERROR("failed to create descriptor pool"));
         goto descriptor_pool_failed;
     }
-    // end create descriptor pool
-    // create descriptor set
+    // end descriptor pool
+    // descriptor sets
     // layouts is duped descriptorSetLayout
-    ARR_ALLOC(VkDescriptorSetLayout, layouts, vulkan.maxFrames);
-    for (uint32_t i = 0; i < vulkan.maxFrames; i++) { layouts[i] = descriptorSetLayout; }
+    ARR_ALLOC(VkDescriptorSetLayout, layouts, maxFrames);
+    for (uint32_t i = 0; i < maxFrames; i++) { layouts[i] = descriptorSetLayout; }
     VkDescriptorSetAllocateInfo dsAInfo = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool = descriptorPool,
-        .descriptorSetCount = vulkan.maxFrames,
+        .descriptorSetCount = maxFrames,
         .pSetLayouts = layouts};
-    ARR_ALLOC(VkDescriptorSet, descriptorSets, vulkan.maxFrames);
-    if (vkAllocateDescriptorSets(vulkan.device, &dsAInfo, descriptorSets) != VK_SUCCESS) {
+    ARR_ALLOC(VkDescriptorSet, descriptorSets, maxFrames);
+    if (vkAllocateDescriptorSets(device, &dsAInfo, descriptorSets) != VK_SUCCESS) {
         eprintf(MSG_ERROR("failed to allocate descriptor sets"));
         goto descriptor_sets_failed;
     }
+    // textures
+    VkDeviceMemory textureImageMemory;
+    VkImage textureImage = create_texture_image(
+        device, pdevice, "data/textures/256/test2.png", commandPool, adevice.drawQueue,
+        &textureImageMemory);
+    if (textureImage == NULL) {
+        eprintf(MSG_ERROR("cannot create image"));
+        goto no_texture_image;
+    }
+    VkImageView textureImageView = create_texture_image_view(device, textureImage);
+    if (textureImageView == NULL) {
+        eprintf(MSG_ERROR("failed to create image view"));
+        goto no_texture_image_view;
+    }
+    VkSampler textureSampler = create_sampler(device);
+    if (textureSampler == NULL) {
+        eprintf(MSG_ERROR("failed to create texture sampler"));
+        goto no_texture_sampler;
+    }
     // populate descriptors
-    for (uint32_t i = 0; i < vulkan.maxFrames; i++) {
+    for (uint32_t i = 0; i < maxFrames; i++) {
         VkDescriptorBufferInfo bufInfo = {
             .buffer = uBuffers[i],
             .offset = 0,
@@ -172,22 +191,35 @@ int main(void) {
              .pImageInfo = &imageInfo}
         };
         // device, descriptor count to write, which to write, count to copy, which to copy
-        vkUpdateDescriptorSets(vulkan.device, ARR_LEN(descriptorWrites), descriptorWrites, 0, NULL);
+        vkUpdateDescriptorSets(device, ARR_LEN(descriptorWrites), descriptorWrites, 0, NULL);
     }
-    // end create descriptor sets
-    // copy data to buffer
-    fill_buffer(vulkan.device, svBufMem, vertexData, (FillBufferParams){.size = bufferSize});
-    copy_buffer(
-        vulkan.device, vulkan.commandPool, vulkan.drawQueue,
-        (ACopyBufferParams){.src = svBuffer, .dst = vBuffer, .size = bufferSize});
-    fill_buffer(vulkan.device, siBufMem, indices, (FillBufferParams){.size = indexSize});
-    copy_buffer(
-        vulkan.device, vulkan.commandPool, vulkan.drawQueue,
-        (ACopyBufferParams){.src = siBuffer, .dst = iBuffer, .size = indexSize});
+    // end descriptor sets
+    VkCommandBuffer *commandBuffers = A_create_command_buffers(device, commandPool, maxFrames);
+    // sync
+    VkSemaphore *waitSemaphores = create_semaphores(device, maxFrames);
+    VkSemaphore *signalSemaphores = create_semaphores(device, maxFrames);
+    VkFence *frontFences = create_fences(device, maxFrames);
+    // end sync
 
+    // end init vulkan
+
+    // Vulkan vulkan = init_vulkan(window);
+    // if (status != VIS_OK) goto vulkan_init_error;
+    eprintf(MSG_INFO("Vulkan initialized successfully"));
+    // uint32_t vertexCount = indexSize / sizeof(*indices);
+    // copy data to buffer
+    fill_buffer(device, svBufMem, vertexData, (FillBufferParams){.size = bufferSize});
+    copy_buffer(
+        device, commandPool, adevice.drawQueue,
+        (ACopyBufferParams){.src = svBuffer, .dst = vBuffer, .size = bufferSize});
+    fill_buffer(device, siBufMem, indices, (FillBufferParams){.size = indexSize});
+    copy_buffer(
+        device, commandPool, adevice.drawQueue,
+        (ACopyBufferParams){.src = siBuffer, .dst = iBuffer, .size = indexSize});
     // end copy data to buffer
     // setup command buffers
-    update_viewport(&vulkan);
+    VkViewport viewport = make_viewport(swapchain.extent);
+    VkRect2D scissor = make_scissor(swapchain.extent, 0, 0, 0, 0);
     ARecordCmdBuffersParams recordArgs = {
         .vBuffer = vBuffer,
         .iBuffer = iBuffer,
@@ -199,9 +231,10 @@ int main(void) {
     uint32_t sizeIndex = 0, sizesLength = sizeof(sizes) / (sizeof(*sizes) * 2);
 
     SDL_Event event;
-    char running = 1, fullscreen = 0, border = 1, rotate = 1;
+    char running = 1, fullscreen = 0, border = 1, timeIncrement = 1;
     uint32_t currentFrame = 0;
-    float aspect = vulkan.swcExtent.width / (float)vulkan.swcExtent.height;
+    long long gameTimeNS = 0, prevTimeNS = 0;
+    float aspect = swapchain.extent.width / (float)swapchain.extent.height;
     while (running) {
         while (SDL_PollEvent(&event)) {
             // printf("SDL event %d\n", event.type);
@@ -210,11 +243,16 @@ int main(void) {
             case SDL_QUIT: running = 0; break;
             case SDL_WINDOWEVENT:
                 switch (event.window.event) {
-                case SDL_WINDOWEVENT_SIZE_CHANGED:
-                    recreate_swapchain(&vulkan);
-                    reset_command_pool(&vulkan);
-                    update_viewport(&vulkan);
-                    aspect = vulkan.swcExtent.width / (float)vulkan.swcExtent.height;
+                case SDL_WINDOWEVENT_SIZE_CHANGED:;
+                    ARecreatedSwapchain newSwapchain = A_recreate_swapchain(
+                        pdevice, surface, queueFamilies, device, renderPass, swapchain,
+                        framebuffers);
+                    swapchain = newSwapchain.swapchain;
+                    framebuffers = newSwapchain.framebuffers;
+                    vkResetCommandPool(device, commandPool, 0);
+                    viewport = make_viewport(swapchain.extent);
+                    scissor = make_scissor(swapchain.extent, 0, 0, 0, 0);
+                    aspect = swapchain.extent.width / (float)swapchain.extent.height;
                     break;
                 }
                 break;
@@ -237,10 +275,17 @@ int main(void) {
                     printf("index: %d\n", index);
                     recordArgs.indexCount = lengths[index];
                     recordArgs.indexOffset = offsets[index];
-                    recreate_swapchain(&vulkan);
-                    reset_command_pool(&vulkan);
+                    ARecreatedSwapchain newSwapchain = A_recreate_swapchain(
+                        pdevice, surface, queueFamilies, device, renderPass, swapchain,
+                        framebuffers);
+                    swapchain = newSwapchain.swapchain;
+                    framebuffers = newSwapchain.framebuffers;
+                    vkResetCommandPool(device, commandPool, 0);
                     break;
-                case SDL_SCANCODE_H: rotate = !rotate; break;
+                case SDL_SCANCODE_H:
+                    timeIncrement = !timeIncrement;
+                    printf("timeIncrement: %d\n", timeIncrement);
+                    break;
                 case SDL_SCANCODE_B:
                     border = !border;
                     printf("border: %d\n", border);
@@ -252,6 +297,7 @@ int main(void) {
                     if (!fullscreen)
                         SDL_SetWindowPosition(
                             window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+                    printf("fullscreen: %d\n", fullscreen);
                     break;
                 case SDL_SCANCODE_Q:
                     if (event.key.keysym.mod & KMOD_CTRL) running = 0;
@@ -274,13 +320,17 @@ int main(void) {
             break;
         }
         // draw frame
-        vkWaitForFences(vulkan.device, 1, vulkan.frontFences + currentFrame, VK_TRUE, UINT64_MAX);
+        vkWaitForFences(device, 1, frontFences + currentFrame, VK_TRUE, UINT64_MAX);
         uint32_t imageIndex = 0;
         VkResult res = vkAcquireNextImageKHR(
-            vulkan.device, vulkan.swapchain, UINT64_MAX, vulkan.waitSemaphores[currentFrame], NULL,
+            device, swapchain.swapchain, UINT64_MAX, waitSemaphores[currentFrame], NULL,
             &imageIndex);
         if (res == VK_ERROR_OUT_OF_DATE_KHR) {
-            recreate_swapchain(&vulkan);
+            ARecreatedSwapchain newSwapchain = A_recreate_swapchain(
+                pdevice, surface, queueFamilies, device, renderPass, swapchain, framebuffers);
+            swapchain = newSwapchain.swapchain;
+            framebuffers = newSwapchain.framebuffers;
+
             continue;
         }
         if (res != VK_SUCCESS && res != VK_SUBOPTIMAL_KHR) {
@@ -291,16 +341,18 @@ int main(void) {
         struct MVP mvp = {
             .model = GLM_MAT4_IDENTITY_INIT,
         };
-        unsigned long long currentTimeNS;
         {
+            long long currentTimeNS;
             struct timespec currentTime0;
             clock_gettime(CLOCK_MONOTONIC, &currentTime0);
             currentTimeNS = currentTime0.tv_nsec;
+            if (timeIncrement) gameTimeNS += (currentTimeNS - prevTimeNS);
+            prevTimeNS = currentTimeNS;
+            // printf("gameTimeNS: %llu\tcurrentTimeNS: %llu\n", gameTimeNS, currentTimeNS);
         }
         vec3 axis = {0, 0, 1}, eye = {2, 2, 2};
-        float rotationTime = currentTimeNS * 1e-9;
-        if (rotate) glm_rotate(mvp.model, 2 * GLM_PIf * rotationTime, axis);
-        // if (rotate) glm_vec3_rotate(eye, 2 * GLM_PIf * rotationTime, axis);
+        float rotationTime = gameTimeNS * 1e-9;
+        glm_rotate(mvp.model, 2 * GLM_PIf * rotationTime, axis);
         glm_lookat(eye, (vec3){0, 0, 0}, axis, mvp.view);
         glm_perspective(glm_rad(45), aspect, 0.1, 10, mvp.proj);
         mvp.proj[1][1] *= -1;
@@ -308,70 +360,68 @@ int main(void) {
         memcpy(uBufsMapped[currentFrame], &mvp, sizeof(mvp));
         // end update uniform buffer
 
-        vkResetFences(vulkan.device, 1, vulkan.frontFences + currentFrame);
-        vkResetCommandBuffer(vulkan.commandBuffers[currentFrame], 0);
+        vkResetFences(device, 1, frontFences + currentFrame);
+        vkResetCommandBuffer(commandBuffers[currentFrame], 0);
         record_command_buffer(
-            &vulkan, graphicsPipeline, plLayout, currentFrame, imageIndex, recordArgs);
+            renderPass, framebuffers, swapchain.extent, commandBuffers, viewport, scissor,
+            graphicsPipeline, plLayout, currentFrame, imageIndex, recordArgs);
 
         VkPipelineStageFlags plStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         VkSubmitInfo submitInfo = {
             .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-
             .waitSemaphoreCount = 1,
-            .pWaitSemaphores = vulkan.waitSemaphores + currentFrame,
+            .pWaitSemaphores = waitSemaphores + currentFrame,
             .pWaitDstStageMask = &plStage,
             .commandBufferCount = 1,
-            .pCommandBuffers = vulkan.commandBuffers + currentFrame,
+            .pCommandBuffers = commandBuffers + currentFrame,
             .signalSemaphoreCount = 1,
-            .pSignalSemaphores = vulkan.signalSemaphores + currentFrame};
-        vkQueueSubmit(vulkan.drawQueue, 1, &submitInfo, vulkan.frontFences[currentFrame]);
+            .pSignalSemaphores = signalSemaphores + currentFrame};
+        vkQueueSubmit(adevice.drawQueue, 1, &submitInfo, frontFences[currentFrame]);
 
         VkPresentInfoKHR presentInfo = {
             .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-
             .waitSemaphoreCount = 1,
-            .pWaitSemaphores = vulkan.signalSemaphores + currentFrame,
+            .pWaitSemaphores = signalSemaphores + currentFrame,
             .swapchainCount = 1,
-            .pSwapchains = &vulkan.swapchain,
-            .pImageIndices = &imageIndex,
-            .pResults = NULL};
-        vkQueuePresentKHR(vulkan.presentQueue, &presentInfo);
-        currentFrame = (currentFrame + 1) % vulkan.maxFrames;
+            .pSwapchains = &swapchain.swapchain,
+            .pImageIndices = &imageIndex};
+        vkQueuePresentKHR(adevice.presentQueue, &presentInfo);
+        currentFrame = (currentFrame + 1) % maxFrames;
         // end draw frame
     }
-    vkDeviceWaitIdle(vulkan.device);
+    vkDeviceWaitIdle(device);
 
 descriptor_sets_failed:
     free(descriptorSets);
     free(layouts);
 descriptor_pool_failed:
-    vkDestroyDescriptorPool(vulkan.device, descriptorPool, NULL);
+    vkDestroyDescriptorPool(device, descriptorPool, NULL);
     // cleanup
     // destroy staging buffers
-    vkDestroyBuffer(vulkan.device, svBuffer, NULL);
-    vkFreeMemory(vulkan.device, svBufMem, NULL);
-    vkDestroyBuffer(vulkan.device, siBuffer, NULL);
-    vkFreeMemory(vulkan.device, siBufMem, NULL);
-    vkFreeMemory(vulkan.device, vBufMem, NULL);
-    vkDestroyBuffer(vulkan.device, vBuffer, NULL);
-    vkFreeMemory(vulkan.device, iBufMem, NULL);
-    vkDestroyBuffer(vulkan.device, iBuffer, NULL);
-    for (uint32_t i = 0; i < vulkan.maxFrames; i++) {
-        vkUnmapMemory(vulkan.device, uBufsMem[i]);
-        vkFreeMemory(vulkan.device, uBufsMem[i], NULL);
-        vkDestroyBuffer(vulkan.device, uBuffers[i], NULL);
+    vkDestroyBuffer(device, svBuffer, NULL);
+    vkFreeMemory(device, svBufMem, NULL);
+    vkDestroyBuffer(device, siBuffer, NULL);
+    vkFreeMemory(device, siBufMem, NULL);
+    vkFreeMemory(device, vBufMem, NULL);
+    vkDestroyBuffer(device, vBuffer, NULL);
+    vkFreeMemory(device, iBufMem, NULL);
+    vkDestroyBuffer(device, iBuffer, NULL);
+    for (uint32_t i = 0; i < maxFrames; i++) {
+        vkUnmapMemory(device, uBufsMem[i]);
+        vkFreeMemory(device, uBufsMem[i], NULL);
+        vkDestroyBuffer(device, uBuffers[i], NULL);
     }
-    vkDestroySampler(vulkan.device, textureSampler, NULL);
+    vkDestroySampler(device, textureSampler, NULL);
 no_texture_sampler:
-    vkDestroyImageView(vulkan.device, textureImageView, NULL);
+    vkDestroyImageView(device, textureImageView, NULL);
 no_texture_image_view:
-    vkFreeMemory(vulkan.device, textureImageMemory, NULL);
-    vkDestroyImage(vulkan.device, textureImage, NULL);
+    vkFreeMemory(device, textureImageMemory, NULL);
+    vkDestroyImage(device, textureImage, NULL);
 no_texture_image:
-    vkDestroyPipeline(vulkan.device, graphicsPipeline, NULL);
-    vkDestroyDescriptorSetLayout(vulkan.device, descriptorSetLayout, NULL);
-    vkDestroyPipelineLayout(vulkan.device, plLayout, NULL);
-    destroy_vulkan(&vulkan);
+    vkDestroyPipeline(device, graphicsPipeline, NULL);
+    vkDestroyDescriptorSetLayout(device, descriptorSetLayout, NULL);
+    vkDestroyPipelineLayout(device, plLayout, NULL);
+    // destroy_vulkan(&vulkan);
     eprintf(MSG_INFO("program finished"));
     return 0;
 shader_load_error:
@@ -379,7 +429,7 @@ shader_load_error:
     if (vertShader.module == NULL) eprintf(MSG_ERROR("Shader '%s' not loaded"), vertShaderPath);
     if (fragShader.module == NULL) eprintf(MSG_ERROR("Shader '%s' not loaded"), fragShaderPath);
     return 2;
-vulkan_init_error:
-    eprintf(MSG_ERROR("Vulkan init error: %s"), VulkanInitStatus_str(vulkan.status));
+    // vulkan_init_error:
+    // eprintf(MSG_ERROR("Vulkan init error: %s"), VulkanInitStatus_str(status));
     return 1;
 }
