@@ -3,7 +3,7 @@
 
 #include "vulkan/vulkan.h"
 
-VkDescriptorSetLayout create_descriptor_set_layout(VkDevice device);
+VkDescriptorSetLayout A_create_descriptor_set_layout(VkDevice device);
 
 typedef struct FillBufferParams {
     uint32_t bufferOffset;

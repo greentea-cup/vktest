@@ -26,14 +26,14 @@ VkImage create_image(
     VkImage image;
     VkResult res = vkCreateImage(device, &imageInfo, NULL, &image);
     if (res != VK_SUCCESS) {
-        eprintf(MSG_ERROR("cannot create image: %d"), res);
+        eprintff(MSG_ERRORF("cannot create image: %d"), res);
         goto no_image;
     }
     VkMemoryRequirements memReqs;
     vkGetImageMemoryRequirements(device, image, &memReqs);
     int32_t memoryTypeIndex = find_memory_type(pdevice, memReqs.memoryTypeBits, properties);
     if (memoryTypeIndex == -1) {
-        eprintf(MSG_ERROR("cannot find suitable memory type for image"));
+        eprintff(MSG_ERRORF("cannot find suitable memory type for image"));
         goto no_suitable_memory;
     }
     VkMemoryAllocateInfo allocInfo = {
@@ -43,7 +43,7 @@ VkImage create_image(
     VkDeviceMemory imageMemory;
     res = vkAllocateMemory(device, &allocInfo, NULL, &imageMemory);
     if (res != VK_SUCCESS) {
-        eprintf(MSG_ERROR("cannot allocate memory for image: %d"), res);
+        eprintff(MSG_ERRORF("cannot allocate memory for image: %d"), res);
         goto no_image_memory;
     }
     vkBindImageMemory(device, image, imageMemory, 0);
@@ -112,10 +112,10 @@ void transition_image_layout(
     return;
 
 invalid_old_layout:
-    eprintf(MSG_ERROR("invalid oldLayout for transition_image_layout: %d"), oldLayout);
+    eprintff(MSG_ERRORF("invalid oldLayout for transition_image_layout: %d"), oldLayout);
     return;
 invalid_new_layout:
-    eprintf(MSG_ERROR("invalid newLayout for transition_image_layout: %d"), newLayout);
+    eprintff(MSG_ERRORF("invalid newLayout for transition_image_layout: %d"), newLayout);
     return;
 }
 
@@ -145,14 +145,14 @@ VkImage create_texture_image(
     uint32_t width, height;
     uint32_t error = lodepng_decode32_file(&image, &width, &height, image_path);
     if (error) {
-        eprintf(MSG_ERROR("cannot load image '%s': %d"), image_path, error);
+        eprintff(MSG_ERRORF("cannot load image '%s': %d"), image_path, error);
         goto no_image;
     }
     VkDeviceSize imageSize = width * height * 4;
     VkDeviceMemory sImageMemory;
     VkBuffer sImageBuffer = create_staging_buffer(device, pdevice, imageSize, &sImageMemory);
     if (sImageBuffer == NULL) {
-        eprintf(MSG_ERROR("failed to create staging buffer for image"));
+        eprintff(MSG_ERRORF("failed to create staging buffer for image"));
         goto no_staging_buffer;
     }
     {
@@ -167,7 +167,7 @@ VkImage create_texture_image(
         VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &textureImageMemory);
     if (textureImage == NULL) {
-        eprintf(MSG_ERROR("failed to create image"));
+        eprintff(MSG_ERRORF("failed to create image"));
         goto no_texture_image;
     }
 
@@ -218,7 +218,7 @@ VkImageView create_image_view(VkDevice device, VkImage image, VkFormat format) {
     VkImageView imageView;
     VkResult res = vkCreateImageView(device, &viewInfo, NULL, &imageView);
     if (res != VK_SUCCESS) {
-        eprintf(MSG_ERROR("cannot create image view: %d"), res);
+        eprintff(MSG_ERRORF("cannot create image view: %d"), res);
         return NULL;
     }
     return imageView;
@@ -251,7 +251,7 @@ VkSampler create_sampler(VkDevice device) {
     VkSampler sampler;
     VkResult res = vkCreateSampler(device, &samplerInfo, NULL, &sampler);
     if (res != VK_SUCCESS) {
-        eprintf(MSG_ERROR("cannot create sampler: %d"), res);
+        eprintff(MSG_ERRORF("cannot create sampler: %d"), res);
         return NULL;
     }
     return sampler;

@@ -2,7 +2,7 @@
 #include "utils.h"
 #include <string.h>
 
-VkDescriptorSetLayout create_descriptor_set_layout(VkDevice device) {
+VkDescriptorSetLayout A_create_descriptor_set_layout(VkDevice device) {
     VkDescriptorSetLayoutBinding bindings[] = {
         {.binding = 0,
          .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -22,7 +22,7 @@ VkDescriptorSetLayout create_descriptor_set_layout(VkDevice device) {
     VkDescriptorSetLayout descriptorSetLayout;
     VkResult res = vkCreateDescriptorSetLayout(device, &info, NULL, &descriptorSetLayout);
     if (res != VK_SUCCESS) {
-        eprintf(MSG_ERROR("cannot create descriptor set layout: %d"), res);
+        eprintff(MSG_ERRORF("cannot create descriptor set layout: %d"), res);
         return NULL;
     }
     return descriptorSetLayout;
@@ -52,14 +52,14 @@ VkBuffer create_buffer(
     VkBuffer buffer;
     VkResult res = vkCreateBuffer(device, &bcInfo, NULL, &buffer);
     if (res != VK_SUCCESS) {
-        eprintf(MSG_ERROR("cannot create buffer: %d"), res);
+        eprintff(MSG_ERRORF("cannot create buffer: %d"), res);
         return NULL;
     }
     VkMemoryRequirements memReqs;
     vkGetBufferMemoryRequirements(device, buffer, &memReqs);
     int32_t memoryTypeIndex = find_memory_type(pdevice, memReqs.memoryTypeBits, memoryProperties);
     if (memoryTypeIndex == -1) {
-        eprintf(MSG_ERROR("no suitable memory type"));
+        eprintff(MSG_ERRORF("no suitable memory type"));
         goto cleanup;
     }
     VkMemoryAllocateInfo allocInfo = {
@@ -70,12 +70,12 @@ VkBuffer create_buffer(
         VkDeviceMemory bufMem = NULL;
         res = vkAllocateMemory(device, &allocInfo, NULL, &bufMem);
         if (res != VK_SUCCESS) {
-            eprintf(MSG_ERROR("cannot allocate memory: %d"), res);
+            eprintff(MSG_ERRORF("cannot allocate memory: %d"), res);
             goto cleanup;
         }
         res = vkBindBufferMemory(device, buffer, bufMem, 0);
         if (res != VK_SUCCESS) {
-            eprintf(MSG_ERROR("cannot bind buffer memory: %d"), res);
+            eprintff(MSG_ERRORF("cannot bind buffer memory: %d"), res);
             vkFreeMemory(device, bufMem, NULL);
             goto cleanup;
         }
@@ -137,7 +137,7 @@ VkBuffer *create_uniform_buffers(
     for (uint32_t i = 0; i < count; i++) {
         VkResult res = vkMapMemory(device, memories[i], 0, buffersSize, 0, mappedMemories + i);
         if (res != VK_SUCCESS) {
-            eprintf(MSG_ERROR("cannot map buffer memory: %d"), res);
+            eprintff(MSG_ERRORF("cannot map buffer memory: %d"), res);
             successful = count;
             mapSuccessful = i;
             goto unmap;
@@ -153,6 +153,8 @@ cleanup:
     free(mappedMemories);
     free(memories);
     free(buffers);
+    *out_bufferMemories = NULL;
+    *out_buffersMapped = NULL;
     return NULL;
 }
 
@@ -160,7 +162,7 @@ int fill_buffer(VkDevice device, VkDeviceMemory bufferMemory, void *data, FillBu
     void *mapData;
     VkResult res = vkMapMemory(device, bufferMemory, args.bufferOffset, args.size, 0, &mapData);
     if (res != VK_SUCCESS) {
-        eprintf(MSG_ERROR("map memory failed: %d"), res);
+        eprintff(MSG_ERRORF("map memory failed: %d"), res);
         return 1;
     }
     memcpy(mapData, data, (size_t)args.size);

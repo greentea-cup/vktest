@@ -4,11 +4,14 @@
 VkCommandPool A_create_command_pool(VkDevice device, uint32_t graphicsFamilyIndex) {
     VkCommandPoolCreateInfo cpCInfo = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-
         .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
         .queueFamilyIndex = graphicsFamilyIndex};
     VkCommandPool commandPool;
-    vkCreateCommandPool(device, &cpCInfo, NULL, &commandPool);
+    VkResult res = vkCreateCommandPool(device, &cpCInfo, NULL, &commandPool);
+    if (res != VK_SUCCESS) {
+        eprintff(MSG_ERRORF("cannot create command pool: %d"), res);
+        return NULL;
+    }
     return commandPool;
 }
 
@@ -16,12 +19,16 @@ VkCommandBuffer *A_create_command_buffers(
     VkDevice device, VkCommandPool commandPool, uint32_t bufferCount) {
     VkCommandBufferAllocateInfo cbAInfo = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-
         .commandPool = commandPool,
         .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
         .commandBufferCount = bufferCount};
     ARR_ALLOC(VkCommandBuffer, buffers, bufferCount);
-    vkAllocateCommandBuffers(device, &cbAInfo, buffers);
+    VkResult res = vkAllocateCommandBuffers(device, &cbAInfo, buffers);
+    if (res != VK_SUCCESS) {
+        eprintff(MSG_ERRORF("cannot allocate command buffers: %d"), res);
+        free(buffers);
+        return NULL;
+    }
     return buffers;
 }
 
@@ -86,7 +93,7 @@ void record_command_buffer(
     VkCommandBuffer cmdBuf = commandBuffers[currentFrame];
     VkResult res = vkBeginCommandBuffer(cmdBuf, &cbBInfo);
     if (res != VK_SUCCESS) {
-        eprintf(MSG_ERROR("vkBeginCommandBuffer %d"), res);
+        eprintff(MSG_ERRORF("vkBeginCommandBuffer: %d"), res);
         return;
     }
     vkCmdBeginRenderPass(cmdBuf, &rpBInfo, VK_SUBPASS_CONTENTS_INLINE);
@@ -102,7 +109,7 @@ void record_command_buffer(
     vkCmdEndRenderPass(cmdBuf);
     res = vkEndCommandBuffer(cmdBuf);
     if (res != VK_SUCCESS) {
-        eprintf(MSG_ERROR("vkEndCommandBuffer %d"), res);
+        eprintff(MSG_ERRORF("vkEndCommandBuffer: %d"), res);
         return;
     }
 }

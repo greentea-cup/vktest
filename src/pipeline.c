@@ -91,7 +91,7 @@ void APipelineParams_free(APipelineParams args) {
     free(args.colorBlendAttachments);
 }
 
-VkPipelineLayout create_pipeline_layout(
+VkPipelineLayout A_create_pipeline_layout(
     VkDevice device, uint32_t setLayoutCount, VkDescriptorSetLayout const *setLayouts,
     uint32_t pushConstantRangeCount, VkPushConstantRange const *pushConstantRanges) {
     VkPipelineLayoutCreateInfo createInfo = {
@@ -105,7 +105,7 @@ VkPipelineLayout create_pipeline_layout(
     return pipelineLayout;
 }
 
-VkPipeline create_pipeline(
+VkPipeline A_create_pipeline(
     VkDevice device, VkPipelineLayout pipelineLayout, VkRenderPass renderPass,
     char const *entryPointGroup, uint32_t shaderCount, AShader const *shaders,
     APipelineParams args) {
@@ -176,7 +176,11 @@ VkPipeline create_pipeline(
     };
 
     VkPipeline pipeline;
-    vkCreateGraphicsPipelines(device, NULL, 1, &pipelineCreateInfo, NULL, &pipeline);
-
+    VkResult res = vkCreateGraphicsPipelines(device, NULL, 1, &pipelineCreateInfo, NULL, &pipeline);
+    free(stages);
+    if (res != VK_SUCCESS) {
+        eprintff(MSG_ERRORF("cannot create graphics pipeline: %d"), res);
+        return NULL;
+    }
     return pipeline;
 }

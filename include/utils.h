@@ -21,7 +21,7 @@
 #define MSG_INFO(x) MSG_INFO_START x MSG_END
 #define eprintf(...) fprintf(stderr, __VA_ARGS__)
 #define MSG_ERRORF(x) MSG_ERR_START "%s: " x MSG_END
-#define MSG_WARNF(x) MSG_WATN_START "%s: " x MSG_END
+#define MSG_WARNF(x) MSG_WARN_START "%s: " x MSG_END
 #define MSG_INFOF(x) MSG_INFO_START "%s: " x MSG_END
 // prepend function name information
 #define eprintff(...) fprintf(stderr, HEAD(__VA_ARGS__), __func__ TAIL(__VA_ARGS__))

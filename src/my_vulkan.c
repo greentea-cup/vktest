@@ -7,8 +7,19 @@
 #include "sync.h"
 #include "utils.h"
 
-static VkInstance create_vulkan_instance(
-    SDL_Window *window, VkApplicationInfo appInfo, uint32_t layerCount, char const *const *layers) {
+VkInstance A_create_instance(SDL_Window *window, uint32_t apiVersion) {
+#ifndef NDEBUG
+    // # apt install vulkan-validationlayers
+    char const *layers[] = {"VK_LAYER_KHRONOS_validation"};
+    uint32_t layerCount = 1;
+    eprintff(MSG_INFOF("Running in DEBUG, adding validation layers"));
+#else
+    char const *const *layers = NULL;
+    uint32_t layerCount = 0;
+#endif
+    VkApplicationInfo appInfo = {
+        .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, .apiVersion = apiVersion};
+
     uint32_t extensionCount;
     SDL_Vulkan_GetInstanceExtensions(window, &extensionCount, NULL);
     ARR_ALLOC(char const *, extensions, extensionCount);
@@ -24,32 +35,17 @@ static VkInstance create_vulkan_instance(
     VkResult res = vkCreateInstance(&instanceInfo, NULL, &instance);
     free(extensions);
     if (res != VK_SUCCESS) {
-        eprintf(MSG_ERROR("cannot create vulkan instance: %d"), res);
+        eprintff(MSG_ERRORF("cannot create vulkan instance: %d"), res);
         return NULL;
     }
     return instance;
-}
-
-VkInstance A_create_instance(SDL_Window *window, uint32_t apiVersion) {
-#ifndef NDEBUG
-    // # apt install vulkan-validationlayers
-    char const *layers[] = {"VK_LAYER_KHRONOS_validation"};
-    uint32_t layerCount = 1;
-    eprintf(MSG_INFO("Running in DEBUG, adding validation layers"));
-#else
-    char const *const *layers = NULL;
-    uint32_t layerCount = 0;
-#endif
-    VkApplicationInfo appInfo = {
-        .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, .apiVersion = apiVersion};
-    return create_vulkan_instance(window, appInfo, layerCount, layers);
 }
 
 VkSurfaceKHR A_create_surface(SDL_Window *window, VkInstance instance) {
     VkSurfaceKHR surface;
     SDL_bool surfaceCreated = SDL_Vulkan_CreateSurface(window, instance, &surface);
     if (!surfaceCreated) {
-        eprintf(MSG_ERROR("cannot create surface"));
+        eprintff(MSG_ERRORF("cannot create surface"));
         return NULL;
     }
     return surface;
@@ -92,10 +88,10 @@ VkPhysicalDevice A_select_pdevice(VkInstance instance) {
     free(pdevices);
 #ifndef A_NO_COMPAT_WARN
     if (bestDeviceScore == 0)
-        eprintf(MSG_WARN("Environment doesn't meet minimum requirements. "
-                         "Stability not guaranteed.\n"
-                         "To disable this warning, define "
-                         "A_NO_COMPAT_WARN before compilation"));
+        eprintff(MSG_WARNF("Environment doesn't meet minimum requirements. "
+                           "Stability not guaranteed.\n"
+                           "To disable this warning, define "
+                           "A_NO_COMPAT_WARN before compilation"));
 #endif
     return pdevice;
 }
@@ -123,7 +119,7 @@ AQueueFamilies A_select_queue_families(VkPhysicalDevice pdevice, VkSurfaceKHR su
     return (AQueueFamilies){.count = qFamCount, .graphicsIndex = gIdx, .presentIndex = pIdx};
 }
 
-ADevice A_create_device(VkPhysicalDevice pdevice, AQueueFamilies queueFamilies) {
+ADevice ADevice_create(VkPhysicalDevice pdevice, AQueueFamilies queueFamilies) {
     // device queue create info && queue priorities
     ARR_ALLOC(VkDeviceQueueCreateInfo, deviceQueueInfos, queueFamilies.count);
     float priority = 1.0f;
@@ -167,6 +163,8 @@ no_device:
     return (ADevice){.device = NULL};
 }
 
+void ADevice_destroy(ADevice adevice) { vkDestroyDevice(adevice.device, NULL); }
+
 VkBool32 A_is_surface_supported(
     VkPhysicalDevice pdevice, uint32_t graphicsFamilyIndex, VkSurfaceKHR surface) {
     VkBool32 isSurfaceSupported;
@@ -201,7 +199,7 @@ static VkPresentModeKHR get_present_mode(VkPhysicalDevice pdevice, VkSurfaceKHR 
     return thePresentMode;
 }
 
-ASwapchain A_create_swapchain(
+ASwapchain ASwapchain_create(
     VkPhysicalDevice pdevice, VkSurfaceKHR surface, AQueueFamilies queueFamilies, VkDevice device) {
     VkSurfaceCapabilitiesKHR surfCaps;
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(pdevice, surface, &surfCaps);
@@ -246,21 +244,25 @@ ASwapchain A_create_swapchain(
     VkSwapchainKHR swapchain;
     VkResult res = vkCreateSwapchainKHR(device, &swapchainInfo, NULL, &swapchain);
     if (res != VK_SUCCESS) {
-        eprintf(MSG_ERROR("cannot create swapchain: %d"), res);
+        eprintff(MSG_ERRORF("cannot create swapchain: %d"), res);
         goto no_swapchain;
     }
     uint32_t swapchainImageCount;
     vkGetSwapchainImagesKHR(device, swapchain, &swapchainImageCount, NULL);
     ARR_ALLOC(VkImage, swapchainImages, swapchainImageCount);
-    vkGetSwapchainImagesKHR(device, swapchain, &swapchainImageCount, swapchainImages);
+    res = vkGetSwapchainImagesKHR(device, swapchain, &swapchainImageCount, swapchainImages);
+    if (res != VK_SUCCESS) {
+        eprintff(MSG_ERRORF("cannot get swapchain images: %d"), res);
+        goto no_images;
+    }
     ARR_ALLOC(VkImageView, swapchainImageViews, swapchainImageCount);
-    uint32_t imageViewSuccessful;
+    uint32_t imageViewSuccessful = swapchainImageCount;
     for (uint32_t i = 0; i < swapchainImageCount; i++) {
         VkImageView imageView = create_image_view(device, swapchainImages[i], swapchainImageFormat);
         if (imageView == NULL) {
-            eprintf(MSG_ERROR("failed to create image view"));
+            eprintff(MSG_ERRORF("failed to create image view"));
             imageViewSuccessful = i; // excluding this
-            goto no_image_view;
+            goto no_image_views;
         }
         swapchainImageViews[i] = imageView;
     }
@@ -271,11 +273,12 @@ ASwapchain A_create_swapchain(
         .imageCount = swapchainImageCount,
         .images = swapchainImages,
         .imageViews = swapchainImageViews};
-no_image_view:
+no_image_views:
     for (uint32_t i = 0; i < imageViewSuccessful; i++) {
         vkDestroyImageView(device, swapchainImageViews[i], NULL);
     }
     free(swapchainImageViews);
+no_images:
     free(swapchainImages);
     vkDestroySwapchainKHR(device, swapchain, NULL);
 no_swapchain:
@@ -289,7 +292,7 @@ VkImageView *A_create_swapchain_image_views(VkDevice device, ASwapchain swapchai
         VkImageView imageView =
             create_image_view(device, swapchain.images[i], swapchain.imageFormat);
         if (imageView == NULL) {
-            eprintf(MSG_ERROR("failed to create image view"));
+            eprintff(MSG_ERRORF("failed to create image view"));
             imageViewSuccessful = i; // excluding this
             goto image_view_failed;
         }
@@ -370,7 +373,7 @@ VkFramebuffer *A_create_framebuffers(
         framebufferInfo.pAttachments = swapchain.imageViews + i;
         VkResult res = vkCreateFramebuffer(device, &framebufferInfo, NULL, framebuffers + i);
         if (res != VK_SUCCESS) {
-            eprintf("cannot create framebuffer #%d: %d", i, res);
+            eprintff(MSG_ERRORF("cannot create framebuffer #%d: %d"), i, res);
             successful = i;
             goto partial_framebuffers;
         }
@@ -473,7 +476,7 @@ ARecreatedSwapchain A_recreate_swapchain(
         vkDestroyFramebuffer(device, oldFramebuffers[i], NULL);
     }
     ASwapchain_destroy(device, oldSwapchain);
-    ASwapchain newSwapchain = A_create_swapchain(pdevice, surface, queueFamilies, device);
+    ASwapchain newSwapchain = ASwapchain_create(pdevice, surface, queueFamilies, device);
     VkFramebuffer *newFramebuffers = A_create_framebuffers(device, renderPass, newSwapchain);
     return (ARecreatedSwapchain){.swapchain = newSwapchain, .framebuffers = newFramebuffers};
     // TODO: errors

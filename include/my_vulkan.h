@@ -47,7 +47,9 @@ typedef struct ADevice {
 /*
  * .device=NULL on fail
  */
-ADevice A_create_device(VkPhysicalDevice pdevice, AQueueFamilies queueFamilies);
+ADevice ADevice_create(VkPhysicalDevice pdevice, AQueueFamilies queueFamilies);
+
+void ADevice_destroy(ADevice adevice);
 
 VkBool32 A_is_surface_supported(
     VkPhysicalDevice pdevice, uint32_t graphicsFamilyIndex, VkSurfaceKHR surface);
@@ -63,8 +65,10 @@ typedef struct ASwapchain {
 
 /*
  */
-ASwapchain A_create_swapchain(
+ASwapchain ASwapchain_create(
     VkPhysicalDevice pdevice, VkSurfaceKHR surface, AQueueFamilies queueFamilies, VkDevice device);
+
+void ASwapchain_destroy(VkDevice device, ASwapchain swapchain);
 
 /*
  */

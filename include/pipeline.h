@@ -27,11 +27,11 @@ APipelineParams APipeline_default(uint32_t binding);
 
 void APipelineParams_free(APipelineParams);
 
-VkPipelineLayout create_pipeline_layout(
+VkPipelineLayout A_create_pipeline_layout(
     VkDevice device, uint32_t setLayoutCount, VkDescriptorSetLayout const *setLayouts,
     uint32_t pushConstantRangeCount, VkPushConstantRange const *pushConstantRanges);
 
-VkPipeline create_pipeline(
+VkPipeline A_create_pipeline(
     VkDevice device, VkPipelineLayout pipelineLayout, VkRenderPass renderPass,
     char const *entryPointGroup, uint32_t shaderCount, AShader const *shaders,
     APipelineParams args);

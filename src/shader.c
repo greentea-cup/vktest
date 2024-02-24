@@ -27,7 +27,7 @@ AShader AShader_from_code(
 AShader AShader_from_path(VkDevice device, char const *path, VkShaderStageFlagBits stage) {
     FILE *fp = fopen(path, "rb");
     if (fp == NULL) {
-        eprintf(MSG_ERROR("read_fp: cannot open '%s'"), path);
+        eprintff(MSG_ERRORF("read_fp: cannot open '%s'"), path);
         return (AShader){.module = NULL};
     }
     fseek(fp, 0, SEEK_END);

@@ -13,6 +13,6 @@ AShader AShader_from_path(VkDevice device, char const *path, VkShaderStageFlagBi
 AShader AShader_from_code(
     VkDevice device, uint32_t codeSize, uint32_t const *code, VkShaderStageFlagBits stage);
 
-void AShader_destroy(VkDevice device, AShader shaderToDestroy);
+void AShader_destroy(VkDevice device, AShader shader);
 
 #endif

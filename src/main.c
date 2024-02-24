@@ -16,30 +16,69 @@
 
 int main(void) {
     // init SDL2
-    SDL_Init(SDL_INIT_EVERYTHING);
+    if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
+        eprintf(MSG_ERROR("cannot init sdl: %s"), SDL_GetError());
+        goto no_sdl;
+    }
     // create SDL window
     SDL_Window *window = SDL_CreateWindow(
         "vktest", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 800, 600,
         SDL_WINDOW_VULKAN | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
-
+    if (window == NULL) {
+        eprintf(MSG_ERROR("cannot create window: %s"), SDL_GetError());
+        goto no_window;
+    }
     // init vulkan
     uint32_t maxFrames = 2;
     VkInstance instance = A_create_instance(window, VK_API_VERSION_1_0);
+    if (instance == NULL) {
+        eprintf(MSG_ERROR("cannot create vulkan instance"));
+        goto no_instance;
+    }
     VkSurfaceKHR surface = A_create_surface(window, instance);
+    if (surface == NULL) {
+        eprintf(MSG_ERROR("cannot create surface"));
+        goto no_surface;
+    }
     VkPhysicalDevice pdevice = A_select_pdevice(instance);
     AQueueFamilies queueFamilies = A_select_queue_families(pdevice, surface);
     if (queueFamilies.graphicsIndex == -1 || queueFamilies.presentIndex == -1) {
-        // goto no_queue_families;
-        exit(1);
+        eprintf(MSG_ERROR("cannot find queue families"));
+        goto no_queue_families;
     }
-    ADevice adevice = A_create_device(pdevice, queueFamilies);
+    ADevice adevice = ADevice_create(pdevice, queueFamilies);
+    if (adevice.device == NULL) {
+        eprintf(MSG_ERROR("cannot create vulkan device"));
+        goto no_device;
+    }
     VkDevice device = adevice.device;
-    if (!A_is_surface_supported(pdevice, queueFamilies.graphicsIndex, surface)) {}
-    ASwapchain swapchain = A_create_swapchain(pdevice, surface, queueFamilies, device);
+    if (!A_is_surface_supported(pdevice, queueFamilies.graphicsIndex, surface)) {
+        eprintf(MSG_ERROR("surface is not supported by selected physical device"));
+        goto no_surface_support;
+    }
+    ASwapchain swapchain = ASwapchain_create(pdevice, surface, queueFamilies, device);
+    if (swapchain.swapchain == NULL) {
+        eprintf(MSG_ERROR("cannot create swapchain"));
+        goto no_swapchain;
+    }
     VkRenderPass renderPass = A_create_render_pass(device, swapchain.imageFormat);
+    if (renderPass == NULL) {
+        eprintf(MSG_ERROR("cannot create render pass"));
+        goto no_render_pass;
+    }
     // descriptor set layout
-    VkDescriptorSetLayout descriptorSetLayout = create_descriptor_set_layout(device);
+    VkDescriptorSetLayout descriptorSetLayout = A_create_descriptor_set_layout(device);
+    if (descriptorSetLayout == NULL) {
+        eprintf(MSG_ERROR("cannot create descriptor set layout"));
+        goto no_descriptor_set_layout;
+    }
     // graphics pipeline
+    VkPipelineLayout plLayout = A_create_pipeline_layout(device, 1, &descriptorSetLayout, 0, NULL);
+    if (plLayout == NULL) {
+        eprintf(MSG_ERROR("cannot create pipeline layout"));
+        goto no_pipeline_layout;
+    }
+    uint32_t uBufBinding = 0, samplerBinding = 1; // binding index for uniform buffers in shaders
 // shaders
 #define SHADER_PATH_PREFIX "./data/shaders_compiled/"
 #define SHADER_PATH(x) SHADER_PATH_PREFIX x
@@ -47,21 +86,39 @@ int main(void) {
     char const *fragShaderPath = SHADER_PATH("main.frag.spv");
     AShader vertShader = AShader_from_path(device, vertShaderPath, VK_SHADER_STAGE_VERTEX_BIT);
     AShader fragShader = AShader_from_path(device, fragShaderPath, VK_SHADER_STAGE_FRAGMENT_BIT);
-    if (vertShader.module == NULL || fragShader.module == NULL) { goto shader_load_error; }
+    if (vertShader.module == NULL || fragShader.module == NULL) {
+        eprintf(MSG_ERROR("cannot load shaders"));
+        if (vertShader.module == NULL) eprintf(MSG_ERROR("Shader '%s' not loaded"), vertShaderPath);
+        else AShader_destroy(device, vertShader);
+        if (fragShader.module == NULL) eprintf(MSG_ERROR("Shader '%s' not loaded"), fragShaderPath);
+        else AShader_destroy(device, fragShader);
+        goto no_shaders;
+    }
     eprintf(MSG_INFO("Shaders loaded successfully"));
-    VkPipelineLayout plLayout = create_pipeline_layout(device, 1, &descriptorSetLayout, 0, NULL);
-    uint32_t uBufBinding = 0, samplerBinding = 1; // binding index for uniform buffers in shaders
     APipelineParams plArgs = APipeline_default(uBufBinding);
-    VkPipeline graphicsPipeline = create_pipeline(
+    VkPipeline graphicsPipeline = A_create_pipeline(
         device, plLayout, renderPass, "main", 2, (AShader[]){vertShader, fragShader}, plArgs);
     // destroy excess
     AShader_destroy(device, vertShader);
     AShader_destroy(device, fragShader);
     APipelineParams_free(plArgs);
-
     //
-    VkFramebuffer *framebuffers = A_create_framebuffers(device, renderPass, swapchain);
+    if (graphicsPipeline == NULL) {
+        eprintf(MSG_ERROR("cannot create pipeline"));
+        goto no_pipeline;
+    }
+    //
+    VkFramebuffer *framebuffers =
+        A_create_framebuffers(device, renderPass, swapchain); // count = swapchain.imageCount
+    if (framebuffers == NULL) {
+        eprintf(MSG_ERROR("cannot create framebuffers"));
+        goto no_framebuffers;
+    }
     VkCommandPool commandPool = A_create_command_pool(device, queueFamilies.graphicsIndex);
+    if (commandPool == NULL) {
+        eprintf(MSG_ERROR("cannot create command pool"));
+        goto no_command_pool;
+    }
     // create buffers
     // data
     struct MVP {
@@ -97,9 +154,11 @@ int main(void) {
     uint32_t bufferSize = sizeof(vertexData); // sizeof(*vertexData) * vertexCount;
     uint32_t indexSize = sizeof(indices);
     //
-    VkBuffer svBuffer, vBuffer, siBuffer, iBuffer, *uBuffers;
-    VkDeviceMemory svBufMem, vBufMem, siBufMem, iBufMem, *uBufsMem;
-    void **uBufsMapped;
+    VkBuffer svBuffer, vBuffer, siBuffer, iBuffer;
+    VkDeviceMemory svBufMem, vBufMem, siBufMem, iBufMem;
+    VkBuffer *uBuffers;       // count = maxFrames
+    VkDeviceMemory *uBufsMem; // count = maxFrames
+    void **uBufsMapped;       // count = maxFrames
     VkDeviceSize uBufSize = sizeof(struct MVP);
     // vertex buffer
     svBuffer = create_staging_buffer(device, pdevice, bufferSize, &svBufMem);
@@ -110,6 +169,11 @@ int main(void) {
     // uniform buffers
     uBuffers =
         create_uniform_buffers(device, pdevice, maxFrames, uBufSize, &uBufsMem, &uBufsMapped);
+    if (svBuffer == NULL || vBuffer == NULL || siBuffer == NULL || iBuffer == NULL ||
+        uBuffers == NULL) {
+        eprintf(MSG_ERROR("cannot create buffers"));
+        goto partial_buffers;
+    }
     // end create buffers
 
     // descriptor pool
@@ -125,7 +189,7 @@ int main(void) {
     VkDescriptorPool descriptorPool;
     if (vkCreateDescriptorPool(device, &poolInfo, NULL, &descriptorPool) != VK_SUCCESS) {
         eprintf(MSG_ERROR("failed to create descriptor pool"));
-        goto descriptor_pool_failed;
+        goto no_descriptor_pool;
     }
     // end descriptor pool
     // descriptor sets
@@ -138,9 +202,11 @@ int main(void) {
         .descriptorSetCount = maxFrames,
         .pSetLayouts = layouts};
     ARR_ALLOC(VkDescriptorSet, descriptorSets, maxFrames);
-    if (vkAllocateDescriptorSets(device, &dsAInfo, descriptorSets) != VK_SUCCESS) {
+    VkResult res = vkAllocateDescriptorSets(device, &dsAInfo, descriptorSets);
+    free(layouts);
+    if (res != VK_SUCCESS) {
         eprintf(MSG_ERROR("failed to allocate descriptor sets"));
-        goto descriptor_sets_failed;
+        goto no_descriptor_sets;
     }
     // textures
     VkDeviceMemory textureImageMemory;
@@ -195,10 +261,19 @@ int main(void) {
     }
     // end descriptor sets
     VkCommandBuffer *commandBuffers = A_create_command_buffers(device, commandPool, maxFrames);
+    if (commandBuffers == NULL) {
+        eprintf(MSG_ERROR("cannot create command buffers"));
+        goto no_command_buffers;
+    }
     // sync
     VkSemaphore *waitSemaphores = create_semaphores(device, maxFrames);
     VkSemaphore *signalSemaphores = create_semaphores(device, maxFrames);
     VkFence *frontFences = create_fences(device, maxFrames);
+    // TODO: return NULL from upper calls
+    if (waitSemaphores == NULL || signalSemaphores == NULL || frontFences == NULL) {
+        eprintf("cannot create synchronization objects");
+        goto no_sync;
+    }
     // end sync
 
     // end init vulkan
@@ -231,9 +306,10 @@ int main(void) {
     uint32_t sizeIndex = 0, sizesLength = sizeof(sizes) / (sizeof(*sizes) * 2);
 
     SDL_Event event;
-    char running = 1, fullscreen = 0, border = 1, timeIncrement = 1;
+    char running = 1, fullscreen = 0, border = 1, timeIncrement = 1, rotationIncrement = 1;
     uint32_t currentFrame = 0;
-    double gameTime = 0, rotationTime = 0, prevTime, timeSpeed = 1, rotationSpeed = 1;
+    double gameTime = 0, dayTime = 0, rotationTime = 0, prevTime, timeSpeed = 1, rotationSpeed = 1,
+           rotationPeriod = 2 * GLM_PI, dayLength = 24 * 60 * 60;
     {
         struct timespec prevTime0;
         timespec_get(&prevTime0, TIME_UTC);
@@ -301,6 +377,9 @@ int main(void) {
                     else rotationSpeed *= 2;
                     printf("rotationSpeed: %f\n", rotationSpeed);
                     break;
+                case SDL_SCANCODE_L:
+                    rotationIncrement = !rotationIncrement;
+                    printf("rotationIncrement: %d\n", rotationIncrement);
                 case SDL_SCANCODE_B:
                     border = !border;
                     printf("border: %d\n", border);
@@ -364,13 +443,20 @@ int main(void) {
             if (timeIncrement) {
                 double timeDelta = (currentTime - prevTime) * timeSpeed;
                 gameTime += timeDelta;
-                rotationTime += timeDelta * rotationSpeed;
+                dayTime += timeDelta;
+                dayTime -= dayLength * floor(dayTime / dayLength);
+                if (rotationIncrement) {
+                    rotationTime += timeDelta * rotationSpeed;
+                    rotationTime -= rotationPeriod * floor(rotationTime / rotationPeriod);
+                }
+                /* printf(
+                    "gameTime: %lf dayTime: %lf rotationTime: %lf\n", gameTime, dayTime,
+                    rotationTime);*/
             }
             prevTime = currentTime;
-            // printf("gameTime: %lf\tcurrentTimeNS: %lf\n", gameTime, currentTime);
         }
         vec3 axis = {0, 0, 1}, eye = {2, 2, 2};
-        glm_rotate(mvp.model, 2 * GLM_PIf * rotationTime, axis);
+        glm_rotate(mvp.model, 2 * GLM_PI * rotationTime, axis);
         glm_lookat(eye, (vec3){0, 0, 0}, axis, mvp.view);
         glm_perspective(glm_rad(45), aspect, 0.1, 10, mvp.proj);
         mvp.proj[1][1] *= -1;
@@ -409,45 +495,103 @@ int main(void) {
     }
     vkDeviceWaitIdle(device);
 
-descriptor_sets_failed:
-    free(descriptorSets);
-    free(layouts);
-descriptor_pool_failed:
-    vkDestroyDescriptorPool(device, descriptorPool, NULL);
-    // cleanup
-    // destroy staging buffers
-    vkDestroyBuffer(device, svBuffer, NULL);
-    vkFreeMemory(device, svBufMem, NULL);
-    vkDestroyBuffer(device, siBuffer, NULL);
-    vkFreeMemory(device, siBufMem, NULL);
-    vkFreeMemory(device, vBufMem, NULL);
-    vkDestroyBuffer(device, vBuffer, NULL);
-    vkFreeMemory(device, iBufMem, NULL);
-    vkDestroyBuffer(device, iBuffer, NULL);
+    // unwind start
+
     for (uint32_t i = 0; i < maxFrames; i++) {
-        vkUnmapMemory(device, uBufsMem[i]);
-        vkFreeMemory(device, uBufsMem[i], NULL);
-        vkDestroyBuffer(device, uBuffers[i], NULL);
+        vkDestroyFence(device, frontFences[i], NULL);
+        vkDestroySemaphore(device, signalSemaphores[i], NULL);
+        vkDestroySemaphore(device, waitSemaphores[i], NULL);
     }
+no_sync:
+    // commandBuffers[maxFrames]
+    vkFreeCommandBuffers(device, commandPool, maxFrames, commandBuffers);
+    free(commandBuffers);
+no_command_buffers:
+    // textureSampler
     vkDestroySampler(device, textureSampler, NULL);
 no_texture_sampler:
+    // textueImageView
     vkDestroyImageView(device, textureImageView, NULL);
 no_texture_image_view:
+    // textureImageMemory
+    // textureImage
     vkFreeMemory(device, textureImageMemory, NULL);
     vkDestroyImage(device, textureImage, NULL);
 no_texture_image:
+    // descriptorSets[maxFrames]
+    // vkFreeDescriptorSets is not aplicable
+    // because descriptor pool's FREE flag is not set
+    free(descriptorSets);
+no_descriptor_sets:
+    // descriptorPool
+    vkDestroyDescriptorPool(device, descriptorPool, NULL);
+no_descriptor_pool:
+partial_buffers:
+    // uBufsMapped[maxFrames]
+    // uBufsMem[maxFrames], iBufMem, siBufMem, svBufMem, vBufMem
+    // svBuffer, vBuffer, siBuffer, iBuffer, uBuffers[maxFrames]
+    free(uBufsMapped); // NULL ok
+    // NOTE: vkFreeMemory implies vkUnmapMemory if it was mapped
+    if (uBufsMem != NULL && uBuffers != NULL)
+        for (uint32_t i = 0; i < maxFrames; i++) {
+            // inside are non-null handles
+            vkFreeMemory(device, uBufsMem[i], NULL);
+            vkDestroyBuffer(device, uBuffers[i], NULL);
+        }
+    if (iBufMem != NULL) vkFreeMemory(device, iBufMem, NULL);
+    if (siBufMem != NULL) vkFreeMemory(device, siBufMem, NULL);
+    if (vBufMem != NULL) vkFreeMemory(device, vBufMem, NULL);
+    if (svBufMem != NULL) vkFreeMemory(device, svBufMem, NULL);
+    if (iBuffer != NULL) vkDestroyBuffer(device, iBuffer, NULL);
+    if (siBuffer != NULL) vkDestroyBuffer(device, siBuffer, NULL);
+    if (vBuffer != NULL) vkDestroyBuffer(device, vBuffer, NULL);
+    if (svBuffer != NULL) vkDestroyBuffer(device, svBuffer, NULL);
+    // no_buffers: // (unused)
+    // commandPool
+    vkDestroyCommandPool(device, commandPool, NULL);
+no_command_pool:
+    // framebuffers[swapchain.imageCount]
+    for (uint32_t i = 0; i < swapchain.imageCount; i++) {
+        vkDestroyFramebuffer(device, framebuffers[i], NULL);
+    }
+no_framebuffers:
+    // graphicsPipeline
     vkDestroyPipeline(device, graphicsPipeline, NULL);
-    vkDestroyDescriptorSetLayout(device, descriptorSetLayout, NULL);
+no_pipeline:
+    // empty
+no_shaders:
+    // plLayout
     vkDestroyPipelineLayout(device, plLayout, NULL);
-    // destroy_vulkan(&vulkan);
-    eprintf(MSG_INFO("program finished"));
+no_pipeline_layout:
+    // descriptorSetLayout
+    vkDestroyDescriptorSetLayout(device, descriptorSetLayout, NULL);
+no_descriptor_set_layout:
+    // renderPass
+    vkDestroyRenderPass(device, renderPass, NULL);
+no_render_pass:
+    // swapchain
+    ASwapchain_destroy(device, swapchain);
+no_swapchain:
+    // empty
+no_surface_support:
+    // adevice
+    // device{adevice}
+    device = NULL;
+    ADevice_destroy(adevice);
+no_device:
+    // empty
+no_queue_families:
+    // surface
+    vkDestroySurfaceKHR(instance, surface, NULL);
+no_surface:
+    // instance
+    vkDestroyInstance(instance, NULL);
+no_instance:
+    // window
+    SDL_DestroyWindow(window);
+no_window:
+    // empty
+no_sdl:
+    // empty
     return 0;
-shader_load_error:
-    eprintf(MSG_ERROR("Shader load error"));
-    if (vertShader.module == NULL) eprintf(MSG_ERROR("Shader '%s' not loaded"), vertShaderPath);
-    if (fragShader.module == NULL) eprintf(MSG_ERROR("Shader '%s' not loaded"), fragShaderPath);
-    return 2;
-    // vulkan_init_error:
-    // eprintf(MSG_ERROR("Vulkan init error: %s"), VulkanInitStatus_str(status));
-    return 1;
 }
